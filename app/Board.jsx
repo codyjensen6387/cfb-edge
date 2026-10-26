@@ -1,31 +1,52 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { teamProps } from '@/lib/props';
 
 const TZ = 'America/Chicago';
 const pct = (w, l) => (w + l > 0 ? w / (w + l) : null);
 const fmtPct = (p) => (p === null ? '–' : `${Math.round(p * 100)}%`);
 const fmtNum = (n) => (n === null || n === undefined ? '–' : n.toFixed(1));
+const signed = (n) => (n === 0 ? 'PK' : n > 0 ? `+${n}` : `${n}`);
 
-function kickoff(iso) {
+function kickoff(iso, withTime = true) {
   if (!iso) return 'TBD';
-  const d = new Date(iso);
-  return d.toLocaleString('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const opts = { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' };
+  if (withTime) Object.assign(opts, { hour: 'numeric', minute: '2-digit' });
+  return new Date(iso).toLocaleString('en-US', opts);
 }
 
 function lineText(g) {
-  const { spread, total } = g.line;
-  let s = 'No line yet';
-  if (spread !== null) s = spread === 0 ? 'Pick’em' : spread < 0 ? `${g.home} ${spread}` : `${g.away} -${spread}`;
-  return { spread: s, total: total !== null ? `O/U ${total}` : null };
+  let s = 'No line';
+  if (g.spread !== null) s = g.spread === 0 ? 'Pick’em' : g.spread < 0 ? `${g.home} ${g.spread}` : `${g.away} -${g.spread}`;
+  return { spread: s, total: g.total !== null ? `O/U ${g.total}` : null };
+}
+
+// Result of a finished game against the closing line, from one team's side.
+function teamResult(team, g) {
+  const isHome = g.home === team;
+  const pf = isHome ? g.homePoints : g.awayPoints;
+  const pa = isHome ? g.awayPoints : g.homePoints;
+  const spread = g.spread === null ? null : isHome ? g.spread : -g.spread;
+  const out = { isHome, pf, pa, spread, ats: null, atsBy: null, ou: null, sum: null };
+  if (!g.completed || pf === null) return out;
+  if (spread !== null) {
+    const m = pf - pa + spread;
+    out.ats = m > 0 ? 'cover' : m < 0 ? 'miss' : 'push';
+    out.atsBy = Math.abs(m);
+  }
+  if (g.total !== null) {
+    out.sum = pf + pa;
+    out.ou = out.sum > g.total ? 'over' : out.sum < g.total ? 'under' : 'push';
+  }
+  return out;
 }
 
 function rates(t, minGames) {
   if (!t) return { ats: null, over: null };
-  const atsN = t.ats.w + t.ats.l, ouN = t.ou.o + t.ou.u;
   return {
-    ats: atsN >= minGames ? pct(t.ats.w, t.ats.l) : null,
-    over: ouN >= minGames ? pct(t.ou.o, t.ou.u) : null,
+    ats: t.ats.w + t.ats.l >= minGames ? pct(t.ats.w, t.ats.l) : null,
+    over: t.ou.o + t.ou.u >= minGames ? pct(t.ou.o, t.ou.u) : null,
   };
 }
 
@@ -43,12 +64,10 @@ function flagsFor(away, home, th, minGames) {
   return flags;
 }
 
-function rankTone(rank, total) {
-  if (!rank) return '';
-  if (rank <= 25) return 'good';
-  if (rank > total - 25) return 'bad';
-  return '';
-}
+const rankTone = (rank, total) => (!rank ? '' : rank <= 25 ? 'good' : rank > total - 25 ? 'bad' : '');
+const recText = (t) => (t ? `${t.su.w}-${t.su.l}` : '–');
+const atsText = (t) => (t ? `${t.ats.w}-${t.ats.l}${t.ats.p ? `-${t.ats.p}` : ''}` : '–');
+const ouText = (t) => (t ? `${t.ou.o}-${t.ou.u}${t.ou.p ? `-${t.ou.p}` : ''}` : '–');
 
 function Bar({ value, th, side }) {
   const w = value === null ? 0 : Math.round(value * 100);
@@ -80,38 +99,127 @@ function Ranked({ value, rank, total }) {
   );
 }
 
-function TeamName({ team, fallback }) {
-  return (
-    <div className="team">
+function TeamName({ team, fallback, onOpen }) {
+  const inner = (
+    <>
       {team?.logo ? <img src={team.logo} alt="" width="28" height="28" loading="lazy" /> : <span className="logo-blank" />}
       <span className="name">{team?.name || fallback}</span>
       {team?.conference ? <span className="conf">{team.conference}</span> : null}
+    </>
+  );
+  return team ? (
+    <button type="button" className="team" onClick={() => onOpen(team.name)} aria-label={`Open ${team.name} schedule`}>{inner}</button>
+  ) : (
+    <div className="team">{inner}</div>
+  );
+}
+
+// ---------- Player props ----------
+
+function Rungs({ rungs, n, th, suffix = '' }) {
+  return (
+    <div className="rungs">
+      {rungs.map(({ t, hits }) => (
+        <span key={t} className={`chip ${hits / n >= th ? 'hit' : ''}`}>
+          <span className="chip-t">{t}+{suffix}</span> {hits}/{n}
+        </span>
+      ))}
     </div>
   );
 }
 
-function GameCard({ g, teams, th, minGames, rankedCount }) {
+function TeamProps({ name, players, includeFcs, th }) {
+  const p = useMemo(() => teamProps(players, includeFcs), [players, includeFcs]);
+  const empty = !p.touchdowns.length && !p.passer.length && !p.rushers.length && !p.receivers.length;
+  return (
+    <div className="tprops">
+      {name ? <h4 className="tprops-name">{name}</h4> : null}
+      {empty ? <p className="muted">No player stats yet.</p> : null}
+
+      {p.touchdowns.length ? (
+        <div className="pgroup">
+          <h5>Rushing and receiving touchdowns</h5>
+          {p.touchdowns.map((r) => (
+            <div className="prow" key={r.name}>
+              <span className="pname">{r.name}</span>
+              <span className={`chip ${r.tdGames / r.n >= th ? 'hit' : ''}`}>TD in {r.tdGames}/{r.n}</span>
+              <span className="pstat">{r.td} total</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {p.passer.map((r) => (
+        <div className="pgroup" key={r.name}>
+          <h5>Passing</h5>
+          <div className="prow">
+            <span className="pname">{r.name}</span>
+            <span className="pstat">{fmtNum(r.avg)} yds, {r.tdAvg.toFixed(1)} TD per game</span>
+          </div>
+          <Rungs rungs={r.rungs} n={r.n} th={th} />
+          <Rungs rungs={r.tdRungs} n={r.n} th={th} suffix=" TD" />
+        </div>
+      ))}
+
+      {[['Rushing', p.rushers], ['Receiving', p.receivers]].map(([label, list]) =>
+        list.length ? (
+          <div className="pgroup" key={label}>
+            <h5>{label}</h5>
+            {list.map((r) => (
+              <div key={r.name} className="pblock">
+                <div className="prow">
+                  <span className="pname">{r.name}</span>
+                  <span className="pstat">{fmtNum(r.avg)} yds per game</span>
+                </div>
+                <Rungs rungs={r.rungs} n={r.n} th={th} />
+              </div>
+            ))}
+          </div>
+        ) : null
+      )}
+    </div>
+  );
+}
+
+// ---------- Game card ----------
+
+function GameCard({ g, teams, players, th, minGames, rankedCount, includeFcs, onOpen }) {
   const A = teams[g.away], H = teams[g.home];
   const flags = flagsFor(A, H, th, minGames);
   const ra = rates(A, minGames), rh = rates(H, minGames);
   const line = lineText(g);
-  const rec = (t) => (t ? `${t.su.w}-${t.su.l}` : '–');
-  const ats = (t) => (t ? `${t.ats.w}-${t.ats.l}${t.ats.p ? `-${t.ats.p}` : ''}` : '–');
-  const ou = (t) => (t ? `${t.ou.o}-${t.ou.u}${t.ou.p ? `-${t.ou.p}` : ''}` : '–');
   const r = (t, k) => <Ranked value={t?.avg[k] ?? null} rank={t?.ranks[k]} total={rankedCount} />;
+
+  let result = null;
+  if (g.completed && g.homePoints !== null) {
+    const home = teamResult(g.home, g);
+    const coverText =
+      home.ats === null ? null : home.ats === 'push' ? 'Push against the spread' : `${home.ats === 'cover' ? g.home : g.away} covered by ${home.atsBy}`;
+    const ouLine = home.ou === null ? null : home.ou === 'push' ? `Push on the total (${home.sum})` : `${home.ou === 'over' ? 'Over' : 'Under'} (${home.sum} points)`;
+    result = (
+      <div className="result">
+        <p className="final">Final: {g.away} {g.awayPoints}, {g.home} {g.homePoints}</p>
+        <p className="outcome">
+          {coverText ? <span>{coverText}</span> : null}
+          {ouLine ? <span className={`ou-${home.ou}`}>{ouLine}</span> : null}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <article className={`game ${flags.length ? 'flagged' : ''}`}>
       <header className="game-head">
-        <TeamName team={A} fallback={g.away} />
+        <TeamName team={A} fallback={g.away} onOpen={onOpen} />
         <span className="at">{g.neutral ? 'vs' : '@'}</span>
-        <TeamName team={H} fallback={g.home} />
+        <TeamName team={H} fallback={g.home} onOpen={onOpen} />
       </header>
       <p className="meta">
-        <span>{kickoff(g.start)}</span>
+        <span>{kickoff(g.start, !g.completed)}</span>
         <span className="line">{line.spread}</span>
         {line.total ? <span className="line">{line.total}</span> : null}
       </p>
+      {result}
       {flags.length ? (
         <ul className="flags">
           {flags.map((f) => <li key={f.key} className={`flag ${f.key}`}>{f.label}</li>)}
@@ -119,18 +227,18 @@ function GameCard({ g, teams, th, minGames, rankedCount }) {
       ) : null}
 
       <div className="tape">
-        <StatRow label="Record" away={rec(A)} home={rec(H)} />
+        <StatRow label="Record" away={recText(A)} home={recText(H)} />
         <StatRow
           label="Against the spread"
-          away={<><span className="pct">{fmtPct(ra.ats)}</span> {ats(A)}</>}
-          home={<>{ats(H)} <span className="pct">{fmtPct(rh.ats)}</span></>}
+          away={<><span className="pct">{fmtPct(ra.ats)}</span> {atsText(A)}</>}
+          home={<>{atsText(H)} <span className="pct">{fmtPct(rh.ats)}</span></>}
         >
           <div className="bars"><Bar value={ra.ats} th={th} side="l" /><Bar value={rh.ats} th={th} side="r" /></div>
         </StatRow>
         <StatRow
           label="Over / under, over %"
-          away={<><span className="pct">{fmtPct(ra.over)}</span> {ou(A)}</>}
-          home={<>{ou(H)} <span className="pct">{fmtPct(rh.over)}</span></>}
+          away={<><span className="pct">{fmtPct(ra.over)}</span> {ouText(A)}</>}
+          home={<>{ouText(H)} <span className="pct">{fmtPct(rh.over)}</span></>}
         >
           <div className="bars"><Bar value={ra.over} th={th} side="l" /><Bar value={rh.over} th={th} side="r" /></div>
         </StatRow>
@@ -145,25 +253,141 @@ function GameCard({ g, teams, th, minGames, rankedCount }) {
         <StatRow label="Pass yards" away={r(A, 'passDef')} home={r(H, 'passDef')} />
         <StatRow label="Rush yards" away={r(A, 'rushDef')} home={r(H, 'rushDef')} />
       </div>
+
+      <details className="props">
+        <summary>Player props</summary>
+        <TeamProps name={g.away} players={players[g.away]} includeFcs={includeFcs} th={th} />
+        <TeamProps name={g.home} players={players[g.home]} includeFcs={includeFcs} th={th} />
+      </details>
     </article>
   );
 }
 
+// ---------- Team page ----------
+
+function TeamView({ name, teams, games, players, th, includeFcs, rankedCount, onOpen, onClose }) {
+  const t = teams[name];
+  const schedule = useMemo(() => games.filter((g) => g.home === name || g.away === name), [games, name]);
+  if (!t) {
+    return (
+      <section className="teamview">
+        <button type="button" className="back" onClick={onClose}>All games</button>
+        <p className="notice">No FBS team named {name}.</p>
+      </section>
+    );
+  }
+  const atsP = pct(t.ats.w, t.ats.l), overP = pct(t.ou.o, t.ou.u);
+  const ranks = [
+    ['Points', 'ppg'], ['Pass yards', 'passOff'], ['Rush yards', 'rushOff'],
+    ['Points allowed', 'ppgAllowed'], ['Pass yards allowed', 'passDef'], ['Rush yards allowed', 'rushDef'],
+  ];
+
+  return (
+    <section className="teamview">
+      <button type="button" className="back" onClick={onClose}>All games</button>
+      <header className="team-hero">
+        {t.logo ? <img src={t.logo} alt="" width="56" height="56" /> : null}
+        <div>
+          <h2 className="hero-name">{t.name}</h2>
+          <p className="muted">{t.conference}</p>
+        </div>
+      </header>
+
+      <dl className="summary">
+        <div><dt>Record</dt><dd>{recText(t)}</dd></div>
+        <div><dt>Against the spread</dt><dd>{atsText(t)} <span className="muted">{fmtPct(atsP)}</span></dd></div>
+        <div><dt>Over / under</dt><dd>{ouText(t)} <span className="muted">{fmtPct(overP)} over</span></dd></div>
+      </dl>
+
+      <dl className="rankgrid">
+        {ranks.map(([label, k]) => (
+          <div key={k}>
+            <dt>{label}</dt>
+            <dd><Ranked value={t.avg[k]} rank={t.ranks[k]} total={rankedCount} /></dd>
+          </div>
+        ))}
+      </dl>
+
+      <h3 className="section-h">Schedule</h3>
+      <div className="table-wrap">
+        <table className="sched">
+          <thead>
+            <tr><th>Wk</th><th>Opponent</th><th>Result</th><th>Spread</th><th>ATS</th><th>Total</th><th>O/U</th></tr>
+          </thead>
+          <tbody>
+            {schedule.map((g) => {
+              const res = teamResult(name, g);
+              const opp = res.isHome ? g.away : g.home;
+              const oppIsFbs = Boolean(teams[opp]);
+              const done = g.completed && res.pf !== null;
+              return (
+                <tr key={g.id} className={done ? '' : 'upcoming'}>
+                  <td>{g.week}</td>
+                  <td className="opp">
+                    <span className="muted">{g.neutral ? 'vs' : res.isHome ? 'vs' : '@'}</span>{' '}
+                    {oppIsFbs ? <button type="button" className="linkish" onClick={() => onOpen(opp)}>{opp}</button> : opp}
+                    {!oppIsFbs ? <span className="tag">FCS</span> : null}
+                  </td>
+                  <td>{done ? <span className={res.pf > res.pa ? 'win' : 'loss'}>{res.pf > res.pa ? 'W' : 'L'} {res.pf}-{res.pa}</span> : <span className="muted">{kickoff(g.start)}</span>}</td>
+                  <td>{res.spread === null ? '–' : signed(res.spread)}</td>
+                  <td>{res.ats ? <span className={`ats-${res.ats}`}>{res.ats === 'push' ? 'Push' : `${res.ats === 'cover' ? 'Cover' : 'Miss'} by ${res.atsBy}`}</span> : '–'}</td>
+                  <td>{g.total ?? '–'}</td>
+                  <td>{res.ou ? <span className={`ou-${res.ou}`}>{res.ou === 'push' ? 'Push' : res.ou === 'over' ? 'Over' : 'Under'} ({res.sum})</span> : '–'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 className="section-h">Player props</h3>
+      <TeamProps players={players[name]} includeFcs={includeFcs} th={th} />
+    </section>
+  );
+}
+
+// ---------- Page ----------
+
 export default function Board({ data }) {
-  const { teams, schedule, year, missingWeeks, updatedAt } = data;
-  const weeks = useMemo(() => [...new Set(schedule.map((g) => g.week))].sort((a, b) => a - b), [schedule]);
-  const [week, setWeek] = useState(weeks[0] ?? null);
+  const { teams, games, players, year, updatedAt } = data;
+  const weeks = useMemo(() => [...new Set(games.map((g) => g.week))].sort((a, b) => a - b), [games]);
+  const firstOpen = useMemo(() => games.find((g) => !g.completed)?.week ?? weeks[weeks.length - 1] ?? null, [games, weeks]);
+
+  const [week, setWeek] = useState(firstOpen);
   const [threshold, setThreshold] = useState(65);
   const [minGames, setMinGames] = useState(4);
   const [show, setShow] = useState('all');
   const [query, setQuery] = useState('');
+  const [includeFcs, setIncludeFcs] = useState(true);
+  const [teamView, setTeamView] = useState(null);
+  const savedScroll = useRef(0);
+
+  // Team pages live at #team/Name so the back button and gesture work.
+  useEffect(() => {
+    const read = () => {
+      const m = window.location.hash.match(/^#team\/(.+)$/);
+      const next = m ? decodeURIComponent(m[1]) : null;
+      setTeamView(next);
+      if (next) window.scrollTo(0, 0);
+      else requestAnimationFrame(() => window.scrollTo(0, savedScroll.current));
+    };
+    read();
+    window.addEventListener('hashchange', read);
+    return () => window.removeEventListener('hashchange', read);
+  }, []);
+  const openTeam = (name) => {
+    if (!window.location.hash.startsWith('#team/')) savedScroll.current = window.scrollY;
+    window.location.hash = `team/${encodeURIComponent(name)}`;
+  };
+  const closeTeam = () => { window.location.hash = ''; };
 
   const th = threshold / 100;
   const rankedCount = useMemo(() => Object.values(teams).filter((t) => t.ranks.ppg).length, [teams]);
+  const q = query.trim().toLowerCase();
+  const teamMatches = useMemo(() => (q ? Object.keys(teams).filter((n) => n.toLowerCase().includes(q)).sort().slice(0, 8) : []), [q, teams]);
 
-  const games = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return schedule
+  const weekGames = useMemo(() => {
+    return games
       .filter((g) => g.week === week)
       .filter((g) => !q || g.home.toLowerCase().includes(q) || g.away.toLowerCase().includes(q))
       .filter((g) => {
@@ -171,63 +395,102 @@ export default function Board({ data }) {
         const f = flagsFor(teams[g.away], teams[g.home], th, minGames).map((x) => x.key);
         return show === 'flagged' ? f.length > 0 : f.includes(show);
       });
-  }, [schedule, week, query, show, teams, th, minGames]);
+  }, [games, week, q, show, teams, th, minGames]);
 
   const updated = new Date(updatedAt).toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const weekIsDone = games.filter((g) => g.week === week).every((g) => g.completed);
+
+  const controls = (
+    <section className="controls" aria-label="Filters">
+      {!teamView ? (
+        <>
+          <label>
+            <span>Week</span>
+            <select value={week ?? ''} onChange={(e) => setWeek(Number(e.target.value))}>
+              {weeks.map((w) => <option key={w} value={w}>Week {w}{w === firstOpen ? ' (next up)' : ''}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Show</span>
+            <select value={show} onChange={(e) => setShow(e.target.value)}>
+              <option value="all">All games</option>
+              <option value="flagged">Any flag</option>
+              <option value="over">Both hitting the over</option>
+              <option value="under">Both hitting the under</option>
+              <option value="ats">ATS mismatch</option>
+            </select>
+          </label>
+        </>
+      ) : null}
+      <label>
+        <span>Flag at {threshold}%+</span>
+        <input type="range" min="55" max="85" step="5" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
+      </label>
+      {!teamView ? (
+        <label>
+          <span>Min. games with a line</span>
+          <input type="number" min="1" max="12" value={minGames} onChange={(e) => setMinGames(Math.max(1, Number(e.target.value) || 1))} />
+        </label>
+      ) : null}
+      <label className="check">
+        <input type="checkbox" checked={includeFcs} onChange={(e) => setIncludeFcs(e.target.checked)} />
+        <span>Count FCS games in player props</span>
+      </label>
+      {!teamView ? (
+        <label className="search">
+          <span>Team</span>
+          <input type="search" placeholder="Search a team" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </label>
+      ) : null}
+    </section>
+  );
 
   return (
     <main className="wrap">
       <header className="top">
         <h1 className="title">CFB Edge</h1>
-        <p className="sub">{year} FBS season. Records use the closing consensus line. Updated {updated} CT.</p>
+        <p className="sub">{year} FBS season. Records are season totals against the closing consensus line. Updated {updated} CT.</p>
       </header>
 
-      <section className="controls" aria-label="Filters">
-        <label>
-          <span>Week</span>
-          <select value={week ?? ''} onChange={(e) => setWeek(Number(e.target.value))}>
-            {weeks.map((w) => <option key={w} value={w}>Week {w}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Show</span>
-          <select value={show} onChange={(e) => setShow(e.target.value)}>
-            <option value="all">All games</option>
-            <option value="flagged">Any flag</option>
-            <option value="over">Both hitting the over</option>
-            <option value="under">Both hitting the under</option>
-            <option value="ats">ATS mismatch</option>
-          </select>
-        </label>
-        <label>
-          <span>Flag at {threshold}%+</span>
-          <input type="range" min="55" max="85" step="5" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
-        </label>
-        <label>
-          <span>Min. games with a line</span>
-          <input type="number" min="1" max="12" value={minGames} onChange={(e) => setMinGames(Math.max(1, Number(e.target.value) || 1))} />
-        </label>
-        <label className="search">
-          <span>Team</span>
-          <input type="search" placeholder="Search a team" value={query} onChange={(e) => setQuery(e.target.value)} />
-        </label>
-      </section>
+      {controls}
 
-      {missingWeeks.length ? (
-        <p className="notice">Yardage stats are missing for week {missingWeeks.sort((a, b) => a - b).join(', ')}. They’ll fill in on the next refresh.</p>
-      ) : null}
-
-      {weeks.length === 0 ? (
-        <p className="notice">No upcoming regular-season games. The season’s schedule may not be posted yet, or the regular season is over.</p>
-      ) : games.length === 0 ? (
-        <p className="notice">No games match these filters. Lower the flag percentage or switch Show to All games.</p>
+      {teamView ? (
+        <TeamView
+          name={teamView} teams={teams} games={games} players={players} th={th}
+          includeFcs={includeFcs} rankedCount={rankedCount} onOpen={openTeam} onClose={closeTeam}
+        />
       ) : (
-        <div className="games">
-          {games.map((g) => <GameCard key={g.id} g={g} teams={teams} th={th} minGames={minGames} rankedCount={rankedCount} />)}
-        </div>
+        <>
+          {teamMatches.length ? (
+            <div className="team-matches">
+              <span className="muted">Open a team:</span>
+              {teamMatches.map((n) => <button type="button" key={n} className="pill" onClick={() => openTeam(n)}>{n}</button>)}
+            </div>
+          ) : null}
+
+          {weekIsDone && week !== null ? <p className="muted weeknote">Week {week} is final. Records and stats shown are current season totals.</p> : null}
+
+          {weeks.length === 0 ? (
+            <p className="notice">No regular-season games posted yet.</p>
+          ) : weekGames.length === 0 ? (
+            <p className="notice">No games match these filters. Lower the flag percentage or switch Show to All games.</p>
+          ) : (
+            <div className="games">
+              {weekGames.map((g) => (
+                <GameCard
+                  key={g.id} g={g} teams={teams} players={players} th={th} minGames={minGames}
+                  rankedCount={rankedCount} includeFcs={includeFcs} onOpen={openTeam}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      <footer className="foot">Data from CollegeFootballData.com. Rankings are among FBS teams, per game. Pushes are left out of percentages.</footer>
+      <footer className="foot">
+        Data from CollegeFootballData.com. Rankings are among FBS teams, per game. Pushes are left out of percentages.
+        Player games count every game a player recorded a pass, rush or catch.
+      </footer>
     </main>
   );
 }

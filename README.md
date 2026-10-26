@@ -1,40 +1,47 @@
 # CFB Edge
 
-Personal board of upcoming FBS games with each team's record, ATS record, over/under record,
-and offense/defense per-game rankings. Games get flagged when both teams are hitting the over,
-both are hitting the under, or a strong ATS team plays a weak one.
+Personal board of FBS games with each team's record, ATS record, over/under record,
+offense/defense per-game rankings, and player prop consistency. Games get flagged when both
+teams are hitting the over, both are hitting the under, or a strong ATS team plays a weak one.
+Tap a team name to see its full schedule against the line.
 
-## Setup
+## How data gets to the site
 
-1. Get a free API key at https://collegefootballdata.com/key
-2. Install and copy the env file:
+A GitHub Action (`.github/workflows/update-data.yml`) runs twice a day, pulls the season
+from CollegeFootballData.com, and saves it to `data/season.json`. Vercel rebuilds the site
+from that file. Finished weeks are saved once, so each run uses only a few API calls.
+
+The Action needs your key as a repository secret named `CFBD_API_KEY`
+(Settings → Secrets and variables → Actions).
+
+To run it right away instead of waiting: Actions tab → Update data → Run workflow.
+
+## Previewing in a codespace
 
 ```bash
-npm install
-cp .env.example .env.local
-```
-
-3. Open `.env.local`, paste your key after `CFBD_API_KEY=`, then run:
-
-```bash
+git pull
+npm run data
 npm run dev
 ```
 
-4. Open http://localhost:3000
+`npm run data` uses the key in `.env.local` and saves to `data/local/`, which is never
+committed, so it can't conflict with the Action's data.
 
-## Deploy to Vercel
+## Publishing changes
 
-Push the folder to a GitHub repo, import it in Vercel, and add this environment variable:
+The Action also commits to this repo, so pull before pushing:
 
-```
-CFBD_API_KEY=your_key_here
+```bash
+git add . && git commit -m "Describe the change" && git pull --rebase && git push
 ```
 
 ## How the numbers work
 
 - ATS and O/U use the closing consensus line (the "consensus" book when listed,
   otherwise the median of all books). Pushes are left out of percentages.
-- Games with no posted line (common vs FCS opponents) don't count toward ATS or O/U.
-- Rankings are per game among FBS teams. Defense: fewest allowed = #1.
-- Data refreshes at most every 6 hours; past weeks' box scores are cached for a week
-  to keep API usage low.
+- Team records and rankings are current season totals, on every week's view.
+- Player prop thresholds sit around each player's own average: the average rounded down
+  (to 50 yards for passing, 25 for rushing and receiving, whole TDs for passing TDs),
+  plus one step below and one above. Green means the player hit it at or above the
+  flag percentage.
+- A player's games are the games he recorded a pass, rush or catch.

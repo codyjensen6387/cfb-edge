@@ -1,11 +1,12 @@
 {
   "name": "cfb-edge",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "data": "node scripts/fetch-data.mjs"
   },
   "dependencies": {
     "next": "14.2.15",
