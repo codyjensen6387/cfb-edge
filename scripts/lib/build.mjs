@@ -16,6 +16,7 @@ export function normalizeGame(g) {
     id: pick(g, 'id'),
     week: pick(g, 'week'),
     start: pick(g, 'startDate', 'start_date') || null,
+    tbd: Boolean(pick(g, 'startTimeTBD', 'start_time_tbd')),
     completed: Boolean(pick(g, 'completed')),
     neutral: Boolean(pick(g, 'neutralSite', 'neutral_site')),
     home: pick(g, 'homeTeam', 'home_team'),

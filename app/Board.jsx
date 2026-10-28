@@ -9,11 +9,47 @@ const fmtPct = (p) => (p === null ? '–' : `${Math.round(p * 100)}%`);
 const fmtNum = (n) => (n === null || n === undefined ? '–' : n.toFixed(1));
 const signed = (n) => (n === 0 ? 'PK' : n > 0 ? `+${n}` : `${n}`);
 
-function kickoff(iso, withTime = true) {
-  if (!iso) return 'TBD';
+// TBD games carry a placeholder clock time, so only their date (read in UTC) means anything.
+function kickoff(g, withTime = true) {
+  if (!g.start) return 'TBD';
+  const d = new Date(g.start);
+  if (g.tbd) return `${d.toLocaleString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}${withTime ? ', time TBD' : ''}`;
   const opts = { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' };
   if (withTime) Object.assign(opts, { hour: 'numeric', minute: '2-digit' });
-  return new Date(iso).toLocaleString('en-US', opts);
+  return d.toLocaleString('en-US', opts);
+}
+function shortKick(g) {
+  if (!g.start) return 'TBD';
+  const d = new Date(g.start);
+  if (g.tbd) return `${d.toLocaleString('en-US', { timeZone: 'UTC', weekday: 'short' })} TBD`;
+  return d.toLocaleString('en-US', { timeZone: TZ, weekday: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
+// Kickoff windows for the props page, in Central time.
+const SLOTS = [
+  { key: 'tue', label: 'Tuesday' },
+  { key: 'wed', label: 'Wednesday' },
+  { key: 'thu', label: 'Thursday' },
+  { key: 'fri', label: 'Friday' },
+  { key: 'sat-early', label: 'Saturday early (11 am–2 pm)' },
+  { key: 'sat-aft', label: 'Saturday afternoon (2–6 pm)' },
+  { key: 'sat-eve', label: 'Saturday evening (6–11 pm)' },
+  { key: 'other', label: 'Sunday or Monday', extra: true },
+  { key: 'tbd', label: 'Time not set yet', extra: true },
+];
+const slotFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
+function slotOf(g) {
+  if (!g.start || g.tbd) return 'tbd';
+  const parts = Object.fromEntries(slotFmt.formatToParts(new Date(g.start)).map((p) => [p.type, p.value]));
+  const hour = Number(parts.hour);
+  switch (parts.weekday) {
+    case 'Tue': return 'tue';
+    case 'Wed': return 'wed';
+    case 'Thu': return 'thu';
+    case 'Fri': return 'fri';
+    case 'Sat': return hour < 14 ? 'sat-early' : hour < 18 ? 'sat-aft' : 'sat-eve';
+    default: return 'other';
+  }
 }
 
 function lineText(g) {
@@ -216,7 +252,7 @@ function GameCard({ g, teams, players, th, minGames, rankedCount, includeFcs, on
         <TeamName team={H} fallback={g.home} onOpen={onOpen} />
       </header>
       <p className="meta">
-        <span>{kickoff(g.start, !g.completed)}</span>
+        <span>{kickoff(g, !g.completed)}</span>
         <span className="line">{line.spread}</span>
         {line.total ? <span className="line">{line.total}</span> : null}
       </p>
@@ -334,7 +370,7 @@ function TeamView({ name, teams, games, players, th, includeFcs, rankedCount, on
                     {oppIsFbs ? <button type="button" className="linkish" onClick={() => onOpen(opp)}>{opp}</button> : opp}
                     {!oppIsFbs ? <span className="tag">FCS</span> : null}
                   </td>
-                  <td>{done ? <span className={res.pf > res.pa ? 'win' : 'loss'}>{res.pf > res.pa ? 'W' : 'L'} {res.pf}-{res.pa}</span> : <span className="muted">{kickoff(g.start)}</span>}</td>
+                  <td>{done ? <span className={res.pf > res.pa ? 'win' : 'loss'}>{res.pf > res.pa ? 'W' : 'L'} {res.pf}-{res.pa}</span> : <span className="muted">{kickoff(g)}</span>}</td>
                   <td>{res.spread === null ? '–' : signed(res.spread)}</td>
                   <td>{res.ats ? <span className={`ats-${res.ats}`}>{res.ats === 'push' ? 'Push' : `${res.ats === 'cover' ? 'Cover' : 'Miss'} by ${res.atsBy}`}</span> : '–'}</td>
                   <td>{g.total ?? '–'}</td>
@@ -380,6 +416,7 @@ function TopList({ title, list, unit, th, onOpen, isTd }) {
                 <span className="muted">
                   <button type="button" className="linkish" onClick={() => onOpen(r.team)}>{r.team}</button> {r.at} {r.opp}
                 </span>
+                <span className="tp-when">{r.when}</span>
               </div>
               <div className="tp-line">
                 {isTd ? (
@@ -414,7 +451,7 @@ function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
       for (const [team, opp, isHome] of [[g.away, g.home, false], [g.home, g.away, true]]) {
         if (!teams[team]) continue; // FCS teams have no player data
         const p = teamProps(players[team], includeFcs);
-        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@' };
+        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: shortKick(g) };
         p.touchdowns.forEach((r) => out.td.push({ ...who, name: r.name, n: r.n, hits: r.tdGames, td: r.td }));
         p.rushers.forEach((r) => out.rush.push({ ...who, name: r.name, n: r.n, avg: r.avg, rungs: r.rungs }));
         p.receivers.forEach((r) => {
@@ -463,8 +500,24 @@ function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
 // ---------- Conference menu ----------
 
 const CONF_KEY = 'cfbedge.hiddenConfs';
+const SLOT_KEY = 'cfbedge.hiddenSlots';
 
-function ConferenceMenu({ conferences, hidden, setHidden }) {
+function useRememberedSet(key) {
+  const [value, setValue] = useState(() => new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) setValue(new Set(JSON.parse(raw)));
+    } catch { /* storage unavailable; start with everything shown */ }
+  }, [key]);
+  const set = (next) => {
+    setValue(next);
+    try { localStorage.setItem(key, JSON.stringify([...next])); } catch { /* ignore */ }
+  };
+  return [value, set];
+}
+
+function MultiSelect({ label, options, hidden, setHidden }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -476,30 +529,30 @@ function ConferenceMenu({ conferences, hidden, setHidden }) {
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
   }, [open]);
 
-  const shown = conferences.filter((c) => !hidden.has(c)).length;
-  const summary = shown === conferences.length ? 'All' : shown === 0 ? 'None' : `${shown} of ${conferences.length}`;
-  const toggle = (c) => {
+  const shown = options.filter((o) => !hidden.has(o.key)).length;
+  const summary = shown === options.length ? 'All' : shown === 0 ? 'None' : `${shown} of ${options.length}`;
+  const toggle = (k) => {
     const next = new Set(hidden);
-    next.has(c) ? next.delete(c) : next.add(c);
+    next.has(k) ? next.delete(k) : next.add(k);
     setHidden(next);
   };
 
   return (
     <div className="confmenu" ref={ref}>
-      <span className="ctl-label">Conferences</span>
+      <span className="ctl-label">{label}</span>
       <button type="button" className="confbtn" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {summary} <span aria-hidden="true">▾</span>
       </button>
       {open ? (
-        <div className="confpanel" role="group" aria-label="Conferences">
+        <div className="confpanel" role="group" aria-label={label}>
           <div className="confactions">
-            <button type="button" onClick={() => setHidden(new Set())}>Select all</button>
-            <button type="button" onClick={() => setHidden(new Set(conferences))}>Clear all</button>
+            <button type="button" onClick={() => setHidden(new Set([...hidden].filter((k) => !options.some((o) => o.key === k))))}>Select all</button>
+            <button type="button" onClick={() => setHidden(new Set([...hidden, ...options.map((o) => o.key)]))}>Clear all</button>
           </div>
-          {conferences.map((c) => (
-            <label key={c} className="confitem">
-              <input type="checkbox" checked={!hidden.has(c)} onChange={() => toggle(c)} />
-              <span>{c}</span>
+          {options.map((o) => (
+            <label key={o.key} className="confitem">
+              <input type="checkbox" checked={!hidden.has(o.key)} onChange={() => toggle(o.key)} />
+              <span>{o.label}</span>
             </label>
           ))}
         </div>
@@ -525,7 +578,8 @@ export default function Board({ data }) {
   const [showStarted, setShowStarted] = useState(false);
   const [view, setView] = useState('games');
   const [now, setNow] = useState(null);
-  const [hiddenConfs, setHiddenConfsState] = useState(() => new Set());
+  const [hiddenConfs, setHiddenConfs] = useRememberedSet(CONF_KEY);
+  const [hiddenSlots, setHiddenSlots] = useRememberedSet(SLOT_KEY);
   const savedScroll = useRef(0);
 
   // A game counts as started once kickoff passes, even before the next data update marks it final.
@@ -535,16 +589,6 @@ export default function Board({ data }) {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CONF_KEY);
-      if (raw) setHiddenConfsState(new Set(JSON.parse(raw)));
-    } catch { /* storage unavailable; start with all conferences */ }
-  }, []);
-  const setHiddenConfs = (next) => {
-    setHiddenConfsState(next);
-    try { localStorage.setItem(CONF_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
-  };
   const conferences = useMemo(
     () => [...new Set(Object.values(teams).map((t) => t.conference).filter(Boolean))].sort(),
     [teams]
@@ -602,9 +646,15 @@ export default function Board({ data }) {
       .filter((g) => g.week === week)
       .filter((g) => !q || g.home.toLowerCase().includes(q) || g.away.toLowerCase().includes(q))
       .filter(confVisible)
-      .filter((g) => weekIsDone || !hasStarted(g));
+      .filter((g) => weekIsDone || !hasStarted(g))
+      .filter((g) => !hiddenSlots.has(slotOf(g)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games, week, q, hiddenConfs, weekIsDone, now]);
+  }, [games, week, q, hiddenConfs, hiddenSlots, weekIsDone, now]);
+  // Extra windows (Sunday/Monday, time not set) only appear when this week has such games.
+  const slotOptions = useMemo(() => {
+    const present = new Set(games.filter((g) => g.week === week).map(slotOf));
+    return SLOTS.filter((o) => !o.extra || present.has(o.key));
+  }, [games, week]);
   const card = (g) => (
     <GameCard
       key={g.id} g={g} teams={teams} players={players} th={th} minGames={minGames}
@@ -632,7 +682,8 @@ export default function Board({ data }) {
               <option value="ats">ATS mismatch</option>
             </select>
           </label> : null}
-          <ConferenceMenu conferences={conferences} hidden={hiddenConfs} setHidden={setHiddenConfs} />
+          <MultiSelect label="Conferences" options={conferences.map((c) => ({ key: c, label: c }))} hidden={hiddenConfs} setHidden={setHiddenConfs} />
+          {view === 'props' ? <MultiSelect label="Kickoff" options={slotOptions} hidden={hiddenSlots} setHidden={setHiddenSlots} /> : null}
         </>
       ) : null}
       <label>

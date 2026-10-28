@@ -237,3 +237,4 @@ button.team:hover .name { text-decoration: underline; text-decoration-thickness:
 .tp-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
 .tp-line .pstat { min-width: 6.5em; }
 .tp-who .pname { flex: 0 1 auto; }
+.tp-when { font-size: 0.82rem; color: var(--hot); font-variant-numeric: tabular-nums; }

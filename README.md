@@ -50,6 +50,7 @@ git add . && git commit -m "Describe the change" && git pull --rebase && git pus
 - A player's games are the games he recorded a pass, rush or catch.
 - Top props this week ranks the players shown under each game by how many of their own
   benchmarks they clear at the flag % or better, then by overall hit rate (3+ games).
+- The Kickoff menu on the props page filters by day and Saturday window (Central time).
 - In the current week, games move to a hidden section at the bottom once kickoff passes.
 - The conference menu shows a game if either team's conference is selected, and
   remembers your choices on each device.
