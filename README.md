@@ -37,11 +37,19 @@ git add . && git commit -m "Describe the change" && git pull --rebase && git pus
 
 ## How the numbers work
 
-- ATS and O/U use the closing consensus line (the "consensus" book when listed,
-  otherwise the median of all books). Pushes are left out of percentages.
+- ATS and O/U use the closing line: the number most sportsbooks listed for that game
+  (ties go to DraftKings, then ESPN Bet, FanDuel, BetMGM, Caesars, William Hill, Bovada).
+  CFBD's averaged "consensus" entry is only a fallback. Each game card shows which book
+  the line came from. Pushes are left out of percentages.
 - Team records and rankings are current season totals, on every week's view.
 - Player prop thresholds sit around each player's own average: the average rounded down
-  (to 50 yards for passing, 25 for rushing and receiving, whole TDs for passing TDs),
+  (to 50 yards for passing, 25 for rushing and receiving, whole TDs for passing TDs,
+  whole catches for receptions),
   plus one step below and one above. Green means the player hit it at or above the
   flag percentage.
 - A player's games are the games he recorded a pass, rush or catch.
+- Top props this week ranks the players shown under each game by how many of their own
+  benchmarks they clear at the flag % or better, then by overall hit rate (3+ games).
+- In the current week, games move to a hidden section at the bottom once kickoff passes.
+- The conference menu shows a game if either team's conference is selected, and
+  remembers your choices on each device.

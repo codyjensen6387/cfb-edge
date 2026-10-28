@@ -13,6 +13,8 @@ const IN_ACTIONS = process.env.GITHUB_ACTIONS === 'true';
 const REPO_DATA = path.join(ROOT, 'data');
 const OUT = IN_ACTIONS ? REPO_DATA : path.join(REPO_DATA, 'local');
 const MAX_RETRIES_FOR_MISSING = 6;
+// Bump when the saved week format changes; older saved weeks get re-pulled once.
+const WEEK_FORMAT = 2; // 2 = adds receptions
 
 async function loadEnvLocal() {
   try {
@@ -85,11 +87,12 @@ async function main() {
       return completed.filter((id) => !have.has(id));
     };
 
-    if (!saved || (missing(saved).length && (saved.tries ?? 0) < MAX_RETRIES_FOR_MISSING)) {
+    const outdated = saved && saved.v !== WEEK_FORMAT;
+    if (!saved || outdated || (missing(saved).length && (saved.tries ?? 0) < MAX_RETRIES_FOR_MISSING)) {
       const params = { ...base, week, classification: 'fbs' };
       const [teamBox, playerBox] = await Promise.all([api('/games/teams', params), api('/games/players', params)]);
-      const prevTries = saved?.tries ?? 0;
-      saved = { week, fetchedAt: new Date().toISOString(), teams: trimTeamBox(teamBox), players: trimPlayerBox(playerBox) };
+      const prevTries = outdated ? 0 : saved?.tries ?? 0;
+      saved = { v: WEEK_FORMAT, week, fetchedAt: new Date().toISOString(), teams: trimTeamBox(teamBox), players: trimPlayerBox(playerBox) };
       saved.tries = missing(saved).length ? prevTries + 1 : 0;
       await fs.writeFile(file, JSON.stringify(saved));
       console.log(`Week ${week}: saved box scores for ${saved.players.length} games`);

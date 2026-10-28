@@ -25,23 +25,40 @@ export function normalizeGame(g) {
   };
 }
 
-const median = (arr) => {
-  const s = [...arr].sort((a, b) => a - b);
-  if (!s.length) return null;
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+// Which number to use when sources disagree. Real sportsbooks first, by the number most of
+// them agree on (ties go to this order). CFBD's "consensus" entry and model sites are fallbacks,
+// since they can be averages like -0.25 that no book actually posts.
+const PREFERRED = ['draftkings', 'espn bet', 'fanduel', 'betmgm', 'caesars', 'william hill', 'bovada'];
+const NOT_A_BOOK = ['consensus', 'numberfire', 'teamrankings'];
+const prefRank = (name) => {
+  const i = PREFERRED.findIndex((p) => name.toLowerCase().includes(p));
+  return i === -1 ? PREFERRED.length : i;
 };
+const toHalf = (v) => Math.round(v * 2) / 2;
 
-// Closing consensus line. Spread is from the home team's view (negative = home favored).
-// Uses the "consensus" provider when present, otherwise the median of the books listed.
+function chooseNumber(books, key) {
+  const withValue = books.filter((b) => b[key] !== null);
+  if (!withValue.length) return { value: null, src: null };
+  const real = withValue.filter((b) => !NOT_A_BOOK.some((x) => b.name.toLowerCase().includes(x)));
+  const pool = real.length ? real : withValue;
+  const counts = new Map();
+  for (const b of pool) counts.set(b[key], (counts.get(b[key]) || 0) + 1);
+  const most = Math.max(...counts.values());
+  const best = pool.filter((b) => counts.get(b[key]) === most).sort((a, b) => prefRank(a.name) - prefRank(b.name))[0];
+  const others = most - 1;
+  return { value: toHalf(best[key]), src: others ? `${best.name} and ${others} more` : best.name };
+}
+
+// Closing line for a game. Spread is from the home team's view (negative = home favored).
 export function consensusLine(lineRow) {
-  const books = pick(lineRow, 'lines') || [];
-  const consensus = books.find((b) => String(pick(b, 'provider') || '').toLowerCase().includes('consensus'));
-  const spreads = books.map((b) => num(pick(b, 'spread'))).filter((v) => v !== null);
-  const totals = books.map((b) => num(pick(b, 'overUnder', 'over_under'))).filter((v) => v !== null);
-  const spread = (consensus && num(pick(consensus, 'spread'))) ?? median(spreads);
-  const total = (consensus && num(pick(consensus, 'overUnder', 'over_under'))) ?? median(totals);
-  return { spread, total };
+  const books = (pick(lineRow, 'lines') || []).map((b) => ({
+    name: String(pick(b, 'provider') || 'Unknown'),
+    spread: num(pick(b, 'spread')),
+    total: num(pick(b, 'overUnder', 'over_under')),
+  }));
+  const spread = chooseNumber(books, 'spread');
+  const total = chooseNumber(books, 'total');
+  return { spread: spread.value, total: total.value, spreadSrc: spread.src, totalSrc: total.src };
 }
 
 // Keep only what the site uses from the per-week box score endpoints.
@@ -57,7 +74,7 @@ export function trimTeamBox(rows) {
 }
 
 const CAT = { passing: 'p', rushing: 'r', receiving: 'c' };
-const TYPE = { YDS: 'y', TD: 'td' };
+const TYPE = { YDS: 'y', TD: 'td', REC: 'r' }; // receiving REC becomes 'cr' (receptions)
 
 export function trimPlayerBox(rows) {
   return rows.map((game) => ({
@@ -74,7 +91,7 @@ export function trimPlayerBox(rows) {
             const name = String(pick(a, 'name') || '').trim();
             if (!name || name.toLowerCase() === 'team') continue;
             const id = String(pick(a, 'id') ?? name);
-            const p = (players[id] ||= { n: name, py: 0, ptd: 0, ry: 0, rtd: 0, cy: 0, ctd: 0 });
+            const p = (players[id] ||= { n: name, py: 0, ptd: 0, ry: 0, rtd: 0, cy: 0, ctd: 0, cr: 0 });
             p[c + t] = num(pick(a, 'stat')) ?? 0;
           }
         }
@@ -174,7 +191,7 @@ function buildTeams(fbsTeams, games, teamBox) {
   return out;
 }
 
-// Per-player game logs: [week, fcsGame, passYds, passTd, rushYds, rushTd, recYds, recTd].
+// Per-player game logs: [week, fcsGame, passYds, passTd, rushYds, rushTd, recYds, recTd, receptions].
 // Only players who could make a team's top lists are kept, to keep the page light.
 function buildPlayers(fbs, gamesById, playerBox) {
   const byTeam = {};
@@ -186,7 +203,7 @@ function buildPlayers(fbs, gamesById, playerBox) {
       const roster = (byTeam[side.team] ||= {});
       for (const [id, p] of Object.entries(side.players)) {
         const entry = (roster[id] ||= { n: p.n, g: [] });
-        entry.g.push([g.week, g.fcs ? 1 : 0, p.py, p.ptd, p.ry, p.rtd, p.cy, p.ctd]);
+        entry.g.push([g.week, g.fcs ? 1 : 0, p.py, p.ptd, p.ry, p.rtd, p.cy, p.ctd, p.cr ?? 0]);
       }
     }
   }
@@ -212,8 +229,11 @@ export function buildSeason({ year, fbsTeams, games, rawLines, weeks }) {
   for (const row of rawLines) linesById[pick(row, 'id')] = consensusLine(row);
 
   const fullGames = games.map((g) => {
-    const line = linesById[g.id] || { spread: null, total: null };
-    return { ...g, spread: line.spread, total: line.total, fcs: !(fbs.has(g.home) && fbs.has(g.away)) };
+    const line = linesById[g.id] || { spread: null, total: null, spreadSrc: null, totalSrc: null };
+    return {
+      ...g, spread: line.spread, total: line.total, spreadSrc: line.spreadSrc, totalSrc: line.totalSrc,
+      fcs: !(fbs.has(g.home) && fbs.has(g.away)),
+    };
   });
   const gamesById = Object.fromEntries(fullGames.map((g) => [g.id, g]));
 

@@ -169,9 +169,10 @@ function TeamProps({ name, players, includeFcs, th }) {
               <div key={r.name} className="pblock">
                 <div className="prow">
                   <span className="pname">{r.name}</span>
-                  <span className="pstat">{fmtNum(r.avg)} yds per game</span>
+                  <span className="pstat">{fmtNum(r.avg)} yds{r.recAvg ? `, ${r.recAvg.toFixed(1)} rec` : ''} per game</span>
                 </div>
                 <Rungs rungs={r.rungs} n={r.n} th={th} />
+                {r.recRungs?.length ? <Rungs rungs={r.recRungs} n={r.n} th={th} suffix=" rec" /> : null}
               </div>
             ))}
           </div>
@@ -219,6 +220,11 @@ function GameCard({ g, teams, players, th, minGames, rankedCount, includeFcs, on
         <span className="line">{line.spread}</span>
         {line.total ? <span className="line">{line.total}</span> : null}
       </p>
+      {g.spreadSrc || g.totalSrc ? (
+        <p className="src">
+          {g.spreadSrc === g.totalSrc || !g.totalSrc ? `Line from ${g.spreadSrc}` : !g.spreadSrc ? `Total from ${g.totalSrc}` : `Spread from ${g.spreadSrc}, total from ${g.totalSrc}`}
+        </p>
+      ) : null}
       {result}
       {flags.length ? (
         <ul className="flags">
@@ -346,6 +352,162 @@ function TeamView({ name, teams, games, players, th, includeFcs, rankedCount, on
   );
 }
 
+// ---------- Top props this week ----------
+
+const TOP_N = 12;
+const MIN_PLAYER_GAMES = 3;
+
+// Most of his own benchmarks cleared at the flag % or better, then highest overall hit rate.
+function benchScore(r, th) {
+  const rates = r.rungs.map((x) => x.hits / r.n);
+  return { cleared: rates.filter((x) => x >= th).length, total: rates.reduce((a, b) => a + b, 0) };
+}
+
+function TopList({ title, list, unit, th, onOpen, isTd }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? list : list.slice(0, TOP_N);
+  return (
+    <section className="tp-card">
+      <h3 className="tp-title">{title}</h3>
+      {list.length === 0 ? <p className="muted">No players yet.</p> : null}
+      <ol className="tp-list">
+        {shown.map((r, i) => (
+          <li className="tp-row" key={`${r.team}-${r.name}`}>
+            <span className="tp-rank">{i + 1}</span>
+            <div className="tp-main">
+              <div className="tp-who">
+                <span className="pname">{r.name}</span>
+                <span className="muted">
+                  <button type="button" className="linkish" onClick={() => onOpen(r.team)}>{r.team}</button> {r.at} {r.opp}
+                </span>
+              </div>
+              <div className="tp-line">
+                {isTd ? (
+                  <>
+                    <span className={`chip ${r.hits / r.n >= th ? 'hit' : ''}`}>TD in {r.hits}/{r.n}</span>
+                    <span className="pstat">{r.td} total</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="pstat">{r.avg.toFixed(1)} {unit}</span>
+                    {r.rungs.map(({ t, hits }) => (
+                      <span key={t} className={`chip ${hits / r.n >= th ? 'hit' : ''}`}><span className="chip-t">{t}+</span> {hits}/{r.n}</span>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+      {list.length > TOP_N ? (
+        <button type="button" className="pill" onClick={() => setAll((v) => !v)}>{all ? 'Show top ' + TOP_N : `Show all ${list.length}`}</button>
+      ) : null}
+    </section>
+  );
+}
+
+function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
+  const pools = useMemo(() => {
+    const out = { td: [], rush: [], recYds: [], catches: [], passYds: [], passTd: [] };
+    for (const g of games) {
+      for (const [team, opp, isHome] of [[g.away, g.home, false], [g.home, g.away, true]]) {
+        if (!teams[team]) continue; // FCS teams have no player data
+        const p = teamProps(players[team], includeFcs);
+        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@' };
+        p.touchdowns.forEach((r) => out.td.push({ ...who, name: r.name, n: r.n, hits: r.tdGames, td: r.td }));
+        p.rushers.forEach((r) => out.rush.push({ ...who, name: r.name, n: r.n, avg: r.avg, rungs: r.rungs }));
+        p.receivers.forEach((r) => {
+          out.recYds.push({ ...who, name: r.name, n: r.n, avg: r.avg, rungs: r.rungs });
+          if (r.recRungs?.length) out.catches.push({ ...who, name: r.name, n: r.n, avg: r.recAvg, rungs: r.recRungs });
+        });
+        p.passer.forEach((r) => {
+          out.passYds.push({ ...who, name: r.name, n: r.n, avg: r.avg, rungs: r.rungs });
+          out.passTd.push({ ...who, name: r.name, n: r.n, avg: r.tdAvg, rungs: r.tdRungs });
+        });
+      }
+    }
+    return out;
+  }, [games, teams, players, includeFcs]);
+
+  const sorted = useMemo(() => {
+    const enough = (r) => r.n >= MIN_PLAYER_GAMES;
+    const byBench = (list) => list.filter(enough).map((r) => ({ ...r, s: benchScore(r, th) }))
+      .sort((a, b) => b.s.cleared - a.s.cleared || b.s.total - a.s.total || b.avg - a.avg);
+    return {
+      td: pools.td.filter(enough).sort((a, b) => b.hits / b.n - a.hits / a.n || b.td - a.td || b.n - a.n),
+      rush: byBench(pools.rush), recYds: byBench(pools.recYds), catches: byBench(pools.catches),
+      passYds: byBench(pools.passYds), passTd: byBench(pools.passTd),
+    };
+  }, [pools, th]);
+
+  if (!games.length) return <p className="notice">No games left to show for this week with these filters.</p>;
+  return (
+    <>
+      <p className="muted tp-note">
+        Players from this week’s games, ranked by how many of their benchmarks they clear at your flag % or better (green),
+        then by overall hit rate. Players need {MIN_PLAYER_GAMES}+ games.
+      </p>
+      <div className="tp-grid">
+        <TopList title="Touchdowns (rush + rec)" list={sorted.td} th={th} onOpen={onOpen} isTd />
+        <TopList title="Rushing yards" list={sorted.rush} unit="yds/g" th={th} onOpen={onOpen} />
+        <TopList title="Receiving yards" list={sorted.recYds} unit="yds/g" th={th} onOpen={onOpen} />
+        <TopList title="Receptions" list={sorted.catches} unit="rec/g" th={th} onOpen={onOpen} />
+        <TopList title="Passing yards" list={sorted.passYds} unit="yds/g" th={th} onOpen={onOpen} />
+        <TopList title="Passing TDs" list={sorted.passTd} unit="TD/g" th={th} onOpen={onOpen} />
+      </div>
+    </>
+  );
+}
+
+// ---------- Conference menu ----------
+
+const CONF_KEY = 'cfbedge.hiddenConfs';
+
+function ConferenceMenu({ conferences, hidden, setHidden }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  const shown = conferences.filter((c) => !hidden.has(c)).length;
+  const summary = shown === conferences.length ? 'All' : shown === 0 ? 'None' : `${shown} of ${conferences.length}`;
+  const toggle = (c) => {
+    const next = new Set(hidden);
+    next.has(c) ? next.delete(c) : next.add(c);
+    setHidden(next);
+  };
+
+  return (
+    <div className="confmenu" ref={ref}>
+      <span className="ctl-label">Conferences</span>
+      <button type="button" className="confbtn" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {summary} <span aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div className="confpanel" role="group" aria-label="Conferences">
+          <div className="confactions">
+            <button type="button" onClick={() => setHidden(new Set())}>Select all</button>
+            <button type="button" onClick={() => setHidden(new Set(conferences))}>Clear all</button>
+          </div>
+          {conferences.map((c) => (
+            <label key={c} className="confitem">
+              <input type="checkbox" checked={!hidden.has(c)} onChange={() => toggle(c)} />
+              <span>{c}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ---------- Page ----------
 
 export default function Board({ data }) {
@@ -360,7 +522,38 @@ export default function Board({ data }) {
   const [query, setQuery] = useState('');
   const [includeFcs, setIncludeFcs] = useState(true);
   const [teamView, setTeamView] = useState(null);
+  const [showStarted, setShowStarted] = useState(false);
+  const [view, setView] = useState('games');
+  const [now, setNow] = useState(null);
+  const [hiddenConfs, setHiddenConfsState] = useState(() => new Set());
   const savedScroll = useRef(0);
+
+  // A game counts as started once kickoff passes, even before the next data update marks it final.
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CONF_KEY);
+      if (raw) setHiddenConfsState(new Set(JSON.parse(raw)));
+    } catch { /* storage unavailable; start with all conferences */ }
+  }, []);
+  const setHiddenConfs = (next) => {
+    setHiddenConfsState(next);
+    try { localStorage.setItem(CONF_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+  };
+  const conferences = useMemo(
+    () => [...new Set(Object.values(teams).map((t) => t.conference).filter(Boolean))].sort(),
+    [teams]
+  );
+  // Show a game if either team's conference is selected. FCS opponents have none, so the FBS team decides.
+  const confVisible = (g) => {
+    const confs = [teams[g.home]?.conference, teams[g.away]?.conference].filter(Boolean);
+    return confs.length === 0 || confs.some((c) => !hiddenConfs.has(c));
+  };
 
   // Team pages live at #team/Name so the back button and gesture work.
   useEffect(() => {
@@ -390,15 +583,34 @@ export default function Board({ data }) {
     return games
       .filter((g) => g.week === week)
       .filter((g) => !q || g.home.toLowerCase().includes(q) || g.away.toLowerCase().includes(q))
+      .filter(confVisible)
       .filter((g) => {
         if (show === 'all') return true;
         const f = flagsFor(teams[g.away], teams[g.home], th, minGames).map((x) => x.key);
         return show === 'flagged' ? f.length > 0 : f.includes(show);
       });
-  }, [games, week, q, show, teams, th, minGames]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games, week, q, show, teams, th, minGames, hiddenConfs]);
 
   const updated = new Date(updatedAt).toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const weekIsDone = games.filter((g) => g.week === week).every((g) => g.completed);
+  const hasStarted = (g) => g.completed || (now !== null && Boolean(g.start) && Date.parse(g.start) <= now);
+  const openGames = weekIsDone ? weekGames : weekGames.filter((g) => !hasStarted(g));
+  const startedGames = weekIsDone ? [] : weekGames.filter(hasStarted);
+  const propGames = useMemo(() => {
+    return games
+      .filter((g) => g.week === week)
+      .filter((g) => !q || g.home.toLowerCase().includes(q) || g.away.toLowerCase().includes(q))
+      .filter(confVisible)
+      .filter((g) => weekIsDone || !hasStarted(g));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games, week, q, hiddenConfs, weekIsDone, now]);
+  const card = (g) => (
+    <GameCard
+      key={g.id} g={g} teams={teams} players={players} th={th} minGames={minGames}
+      rankedCount={rankedCount} includeFcs={includeFcs} onOpen={openTeam}
+    />
+  );
 
   const controls = (
     <section className="controls" aria-label="Filters">
@@ -410,7 +622,7 @@ export default function Board({ data }) {
               {weeks.map((w) => <option key={w} value={w}>Week {w}{w === firstOpen ? ' (next up)' : ''}</option>)}
             </select>
           </label>
-          <label>
+          {view === 'games' ? <label>
             <span>Show</span>
             <select value={show} onChange={(e) => setShow(e.target.value)}>
               <option value="all">All games</option>
@@ -419,14 +631,15 @@ export default function Board({ data }) {
               <option value="under">Both hitting the under</option>
               <option value="ats">ATS mismatch</option>
             </select>
-          </label>
+          </label> : null}
+          <ConferenceMenu conferences={conferences} hidden={hiddenConfs} setHidden={setHiddenConfs} />
         </>
       ) : null}
       <label>
         <span>Flag at {threshold}%+</span>
         <input type="range" min="55" max="85" step="5" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
       </label>
-      {!teamView ? (
+      {!teamView && view === 'games' ? (
         <label>
           <span>Min. games with a line</span>
           <input type="number" min="1" max="12" value={minGames} onChange={(e) => setMinGames(Math.max(1, Number(e.target.value) || 1))} />
@@ -449,7 +662,7 @@ export default function Board({ data }) {
     <main className="wrap">
       <header className="top">
         <h1 className="title">CFB Edge</h1>
-        <p className="sub">{year} FBS season. Records are season totals against the closing consensus line. Updated {updated} CT.</p>
+        <p className="sub">{year} FBS season. Records are season totals against the closing line. Updated {updated} CT.</p>
       </header>
 
       {controls}
@@ -468,21 +681,35 @@ export default function Board({ data }) {
             </div>
           ) : null}
 
+          <div className="viewtabs" role="tablist" aria-label="View">
+            <button type="button" role="tab" aria-selected={view === 'games'} className={view === 'games' ? 'on' : ''} onClick={() => setView('games')}>Games</button>
+            <button type="button" role="tab" aria-selected={view === 'props'} className={view === 'props' ? 'on' : ''} onClick={() => setView('props')}>Top props this week</button>
+          </div>
+
           {weekIsDone && week !== null ? <p className="muted weeknote">Week {week} is final. Records and stats shown are current season totals.</p> : null}
 
-          {weeks.length === 0 ? (
+          {view === 'props' ? (
+            <TopProps games={propGames} teams={teams} players={players} includeFcs={includeFcs} th={th} onOpen={openTeam} />
+          ) : weeks.length === 0 ? (
             <p className="notice">No regular-season games posted yet.</p>
           ) : weekGames.length === 0 ? (
-            <p className="notice">No games match these filters. Lower the flag percentage or switch Show to All games.</p>
+            <p className="notice">No games match these filters. Check the conference menu, lower the flag percentage, or switch Show to All games.</p>
           ) : (
-            <div className="games">
-              {weekGames.map((g) => (
-                <GameCard
-                  key={g.id} g={g} teams={teams} players={players} th={th} minGames={minGames}
-                  rankedCount={rankedCount} includeFcs={includeFcs} onOpen={openTeam}
-                />
-              ))}
-            </div>
+            <>
+              {openGames.length ? (
+                <div className="games">{openGames.map(card)}</div>
+              ) : (
+                <p className="notice">Every game shown for week {week} has kicked off.</p>
+              )}
+              {startedGames.length ? (
+                <div className="started">
+                  <button type="button" className="pill started-toggle" aria-expanded={showStarted} onClick={() => setShowStarted((v) => !v)}>
+                    {showStarted ? 'Hide' : 'Show'} {startedGames.length} started or finished {startedGames.length === 1 ? 'game' : 'games'}
+                  </button>
+                  {showStarted ? <div className="games">{startedGames.map(card)}</div> : null}
+                </div>
+              ) : null}
+            </>
           )}
         </>
       )}
