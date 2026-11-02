@@ -238,3 +238,18 @@ button.team:hover .name { text-decoration: underline; text-decoration-thickness:
 .tp-line .pstat { min-width: 6.5em; }
 .tp-who .pname { flex: 0 1 auto; }
 .tp-when { font-size: 0.82rem; color: var(--hot); font-variant-numeric: tabular-nums; }
+.streak { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.streak.hot { color: var(--hot); }
+.streak.cold { font-weight: 400; }
+
+/* Sport switch */
+.sportbar { max-width: 1180px; margin: 0 auto; padding: 16px 16px 0; }
+.sportwrap { margin: 0; }
+
+/* Basketball props */
+.hblock { padding: 6px 0; border-top: 1px solid var(--rule); }
+.hblock:first-of-type { border-top: 0; }
+.hline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 2px 0; }
+.hline .rungs { margin: 0; }
+.hlabel { width: 2.6em; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+.havg { min-width: 2.6em; color: var(--ink); font-weight: 600; }

@@ -1,9 +1,21 @@
-# CFB Edge
+# CFB Edge / CBB Edge
+
+Football and basketball betting-research boards on one site; switch sports at the top.
 
 Personal board of FBS games with each team's record, ATS record, over/under record,
 offense/defense per-game rankings, and player prop consistency. Games get flagged when both
 teams are hitting the over, both are hitting the under, or a strong ATS team plays a weak one.
 Tap a team name to see its full schedule against the line.
+
+## Basketball
+
+- Power-conference teams only (ACC, Big 12, Big East, Big Ten, SEC, Pac-12). Their games against
+  other schools are shown, with records and props for the power team only.
+- Pick a day instead of a week. Top props for the day covers each power team's top 5 players by
+  minutes: points (book-style steps 5, 8, 10, 12, 15, 18, 20, 22, 25...), rebounds (every number
+  from 4), assists and 3-pointers made (every number from 1).
+- Data comes from CollegeBasketballData.com with the same CFBD_API_KEY.
+  `npm run data:basketball` pulls just basketball; `npm run data` pulls both.
 
 ## How data gets to the site
 
@@ -48,6 +60,8 @@ git add . && git commit -m "Describe the change" && git pull --rebase && git pus
   plus one step below and one above. Green means the player hit it at or above the
   flag percentage.
 - A player's games are the games he recorded a pass, rush or catch.
+- Touchdown rows show 2+ and 3+ TD only when hit in at least half his games, plus his current
+  streak (or how many games since his last TD). The TD list sorts by TD rate, then streak.
 - Top props this week ranks the players shown under each game by how many of their own
   benchmarks they clear at the flag % or better, then by overall hit rate (3+ games).
 - The Kickoff menu on the props page filters by day and Saturday window (Central time).

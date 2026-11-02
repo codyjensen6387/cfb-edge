@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { teamProps } from '@/lib/props';
 
-const TZ = 'America/Chicago';
-const pct = (w, l) => (w + l > 0 ? w / (w + l) : null);
-const fmtPct = (p) => (p === null ? '–' : `${Math.round(p * 100)}%`);
-const fmtNum = (n) => (n === null || n === undefined ? '–' : n.toFixed(1));
-const signed = (n) => (n === 0 ? 'PK' : n > 0 ? `+${n}` : `${n}`);
+export const TZ = 'America/Chicago';
+export const pct = (w, l) => (w + l > 0 ? w / (w + l) : null);
+export const fmtPct = (p) => (p === null ? '–' : `${Math.round(p * 100)}%`);
+export const fmtNum = (n) => (n === null || n === undefined ? '–' : n.toFixed(1));
+export const signed = (n) => (n === 0 ? 'PK' : n > 0 ? `+${n}` : `${n}`);
 
 // TBD games carry a placeholder clock time, so only their date (read in UTC) means anything.
 function kickoff(g, withTime = true) {
@@ -52,14 +52,14 @@ function slotOf(g) {
   }
 }
 
-function lineText(g) {
+export function lineText(g) {
   let s = 'No line';
   if (g.spread !== null) s = g.spread === 0 ? 'Pick’em' : g.spread < 0 ? `${g.home} ${g.spread}` : `${g.away} -${g.spread}`;
   return { spread: s, total: g.total !== null ? `O/U ${g.total}` : null };
 }
 
 // Result of a finished game against the closing line, from one team's side.
-function teamResult(team, g) {
+export function teamResult(team, g) {
   const isHome = g.home === team;
   const pf = isHome ? g.homePoints : g.awayPoints;
   const pa = isHome ? g.awayPoints : g.homePoints;
@@ -78,7 +78,7 @@ function teamResult(team, g) {
   return out;
 }
 
-function rates(t, minGames) {
+export function rates(t, minGames) {
   if (!t) return { ats: null, over: null };
   return {
     ats: t.ats.w + t.ats.l >= minGames ? pct(t.ats.w, t.ats.l) : null,
@@ -86,7 +86,7 @@ function rates(t, minGames) {
   };
 }
 
-function flagsFor(away, home, th, minGames) {
+export function flagsFor(away, home, th, minGames) {
   const a = rates(away, minGames), h = rates(home, minGames);
   const flags = [];
   if (a.over !== null && h.over !== null) {
@@ -100,12 +100,12 @@ function flagsFor(away, home, th, minGames) {
   return flags;
 }
 
-const rankTone = (rank, total) => (!rank ? '' : rank <= 25 ? 'good' : rank > total - 25 ? 'bad' : '');
-const recText = (t) => (t ? `${t.su.w}-${t.su.l}` : '–');
-const atsText = (t) => (t ? `${t.ats.w}-${t.ats.l}${t.ats.p ? `-${t.ats.p}` : ''}` : '–');
-const ouText = (t) => (t ? `${t.ou.o}-${t.ou.u}${t.ou.p ? `-${t.ou.p}` : ''}` : '–');
+export const rankTone = (rank, total) => (!rank ? '' : rank <= 25 ? 'good' : rank > total - 25 ? 'bad' : '');
+export const recText = (t) => (t ? `${t.su.w}-${t.su.l}` : '–');
+export const atsText = (t) => (t ? `${t.ats.w}-${t.ats.l}${t.ats.p ? `-${t.ats.p}` : ''}` : '–');
+export const ouText = (t) => (t ? `${t.ou.o}-${t.ou.u}${t.ou.p ? `-${t.ou.p}` : ''}` : '–');
 
-function Bar({ value, th, side }) {
+export function Bar({ value, th, side }) {
   const w = value === null ? 0 : Math.round(value * 100);
   const tone = value === null ? '' : value >= th ? 'hot' : value <= 1 - th ? 'cold' : '';
   return (
@@ -115,7 +115,7 @@ function Bar({ value, th, side }) {
   );
 }
 
-function StatRow({ label, away, home, children }) {
+export function StatRow({ label, away, home, children }) {
   return (
     <div className="row">
       <div className="cell away">{away}</div>
@@ -126,7 +126,7 @@ function StatRow({ label, away, home, children }) {
   );
 }
 
-function Ranked({ value, rank, total }) {
+export function Ranked({ value, rank, total }) {
   return (
     <span className="ranked">
       <span className="val">{fmtNum(value)}</span>
@@ -135,10 +135,10 @@ function Ranked({ value, rank, total }) {
   );
 }
 
-function TeamName({ team, fallback, onOpen }) {
+export function TeamName({ team, fallback, onOpen }) {
   const inner = (
     <>
-      {team?.logo ? <img src={team.logo} alt="" width="28" height="28" loading="lazy" /> : <span className="logo-blank" />}
+      {team?.logo ? <img src={team.logo} alt="" width="28" height="28" loading="lazy" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} /> : <span className="logo-blank" />}
       <span className="name">{team?.name || fallback}</span>
       {team?.conference ? <span className="conf">{team.conference}</span> : null}
     </>
@@ -152,7 +152,23 @@ function TeamName({ team, fallback, onOpen }) {
 
 // ---------- Player props ----------
 
-function Rungs({ rungs, n, th, suffix = '' }) {
+// 2+/3+ TD chips (only when hit in half his games or more) and his current scoring streak.
+export function TdForm({ r, th }) {
+  return (
+    <>
+      {(r.multi || []).map(({ t, hits }) => (
+        <span key={t} className={`chip ${hits / r.n >= th ? 'hit' : ''}`}><span className="chip-t">{t}+ TD</span> {hits}/{r.n}</span>
+      ))}
+      {r.streak > 0 ? (
+        <span className={`streak ${r.streak >= 2 ? 'hot' : ''}`}>{r.streak === 1 ? 'TD last game' : `${r.streak} straight`}</span>
+      ) : r.sinceLast !== null && r.sinceLast !== undefined ? (
+        <span className="streak cold">No TD in last {r.sinceLast === 1 ? 'game' : `${r.sinceLast} games`}</span>
+      ) : null}
+    </>
+  );
+}
+
+export function Rungs({ rungs, n, th, suffix = '' }) {
   return (
     <div className="rungs">
       {rungs.map(({ t, hits }) => (
@@ -179,6 +195,7 @@ function TeamProps({ name, players, includeFcs, th }) {
             <div className="prow" key={r.name}>
               <span className="pname">{r.name}</span>
               <span className={`chip ${r.tdGames / r.n >= th ? 'hit' : ''}`}>TD in {r.tdGames}/{r.n}</span>
+              <TdForm r={r} th={th} />
               <span className="pstat">{r.td} total</span>
             </div>
           ))}
@@ -390,16 +407,16 @@ function TeamView({ name, teams, games, players, th, includeFcs, rankedCount, on
 
 // ---------- Top props this week ----------
 
-const TOP_N = 12;
-const MIN_PLAYER_GAMES = 3;
+export const TOP_N = 12;
+export const MIN_PLAYER_GAMES = 3;
 
 // Most of his own benchmarks cleared at the flag % or better, then highest overall hit rate.
-function benchScore(r, th) {
+export function benchScore(r, th) {
   const rates = r.rungs.map((x) => x.hits / r.n);
   return { cleared: rates.filter((x) => x >= th).length, total: rates.reduce((a, b) => a + b, 0) };
 }
 
-function TopList({ title, list, unit, th, onOpen, isTd }) {
+export function TopList({ title, list, unit, th, onOpen, isTd }) {
   const [all, setAll] = useState(false);
   const shown = all ? list : list.slice(0, TOP_N);
   return (
@@ -422,6 +439,7 @@ function TopList({ title, list, unit, th, onOpen, isTd }) {
                 {isTd ? (
                   <>
                     <span className={`chip ${r.hits / r.n >= th ? 'hit' : ''}`}>TD in {r.hits}/{r.n}</span>
+                    <TdForm r={r} th={th} />
                     <span className="pstat">{r.td} total</span>
                   </>
                 ) : (
@@ -452,7 +470,7 @@ function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
         if (!teams[team]) continue; // FCS teams have no player data
         const p = teamProps(players[team], includeFcs);
         const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: shortKick(g) };
-        p.touchdowns.forEach((r) => out.td.push({ ...who, name: r.name, n: r.n, hits: r.tdGames, td: r.td }));
+        p.touchdowns.forEach((r) => out.td.push({ ...who, name: r.name, n: r.n, hits: r.tdGames, td: r.td, multi: r.multi, streak: r.streak, sinceLast: r.sinceLast }));
         p.rushers.forEach((r) => out.rush.push({ ...who, name: r.name, n: r.n, avg: r.avg, rungs: r.rungs }));
         p.receivers.forEach((r) => {
           out.recYds.push({ ...who, name: r.name, n: r.n, avg: r.avg, rungs: r.rungs });
@@ -472,7 +490,7 @@ function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
     const byBench = (list) => list.filter(enough).map((r) => ({ ...r, s: benchScore(r, th) }))
       .sort((a, b) => b.s.cleared - a.s.cleared || b.s.total - a.s.total || b.avg - a.avg);
     return {
-      td: pools.td.filter(enough).sort((a, b) => b.hits / b.n - a.hits / a.n || b.td - a.td || b.n - a.n),
+      td: pools.td.filter(enough).sort((a, b) => b.hits / b.n - a.hits / a.n || b.streak - a.streak || b.td - a.td || b.n - a.n),
       rush: byBench(pools.rush), recYds: byBench(pools.recYds), catches: byBench(pools.catches),
       passYds: byBench(pools.passYds), passTd: byBench(pools.passTd),
     };
@@ -502,7 +520,7 @@ function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
 const CONF_KEY = 'cfbedge.hiddenConfs';
 const SLOT_KEY = 'cfbedge.hiddenSlots';
 
-function useRememberedSet(key) {
+export function useRememberedSet(key) {
   const [value, setValue] = useState(() => new Set());
   useEffect(() => {
     try {
@@ -517,7 +535,7 @@ function useRememberedSet(key) {
   return [value, set];
 }
 
-function MultiSelect({ label, options, hidden, setHidden }) {
+export function MultiSelect({ label, options, hidden, setHidden }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {

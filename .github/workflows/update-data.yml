@@ -23,8 +23,17 @@ jobs:
         with:
           node-version: 20
 
-      - name: Pull season data
+      - name: Football data
+        id: football
+        continue-on-error: true
         run: node scripts/fetch-data.mjs
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+
+      - name: Basketball data
+        id: basketball
+        continue-on-error: true
+        run: node scripts/fetch-cbb.mjs
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
 
@@ -41,3 +50,9 @@ jobs:
             git pull --rebase
             git push
           fi
+
+      - name: Flag a failed sport
+        if: steps.football.outcome == 'failure' || steps.basketball.outcome == 'failure'
+        run: |
+          echo "Football: ${{ steps.football.outcome }}, basketball: ${{ steps.basketball.outcome }}"
+          exit 1
