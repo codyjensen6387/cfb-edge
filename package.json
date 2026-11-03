@@ -1,14 +1,15 @@
 {
   "name": "cfb-edge",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "data": "node scripts/fetch-data.mjs && node scripts/fetch-cbb.mjs",
+    "data": "node scripts/fetch-data.mjs && node scripts/fetch-cbb.mjs && node scripts/fetch-ucl.mjs",
     "data:football": "node scripts/fetch-data.mjs",
-    "data:basketball": "node scripts/fetch-cbb.mjs"
+    "data:basketball": "node scripts/fetch-cbb.mjs",
+    "data:soccer": "node scripts/fetch-ucl.mjs"
   },
   "dependencies": {
     "next": "14.2.15",

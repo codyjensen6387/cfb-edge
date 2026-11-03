@@ -37,6 +37,11 @@ jobs:
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
 
+      - name: Soccer data
+        id: soccer
+        continue-on-error: true
+        run: node scripts/fetch-ucl.mjs
+
       - name: Save data to the repo
         run: |
           # Commit as the repo owner so Vercel deploys it on the free plan.
@@ -52,7 +57,7 @@ jobs:
           fi
 
       - name: Flag a failed sport
-        if: steps.football.outcome == 'failure' || steps.basketball.outcome == 'failure'
+        if: steps.football.outcome == 'failure' || steps.basketball.outcome == 'failure' || steps.soccer.outcome == 'failure'
         run: |
-          echo "Football: ${{ steps.football.outcome }}, basketball: ${{ steps.basketball.outcome }}"
+          echo "Football: ${{ steps.football.outcome }}, basketball: ${{ steps.basketball.outcome }}, soccer: ${{ steps.soccer.outcome }}"
           exit 1

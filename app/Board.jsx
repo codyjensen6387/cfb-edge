@@ -100,7 +100,11 @@ export function flagsFor(away, home, th, minGames) {
   return flags;
 }
 
-export const rankTone = (rank, total) => (!rank ? '' : rank <= 25 ? 'good' : rank > total - 25 ? 'bad' : '');
+export const rankTone = (rank, total) => {
+  if (!rank) return '';
+  const band = total >= 100 ? 25 : Math.max(3, Math.round(total * 0.2));
+  return rank <= band ? 'good' : rank > total - band ? 'bad' : '';
+};
 export const recText = (t) => (t ? `${t.su.w}-${t.su.l}` : '–');
 export const atsText = (t) => (t ? `${t.ats.w}-${t.ats.l}${t.ats.p ? `-${t.ats.p}` : ''}` : '–');
 export const ouText = (t) => (t ? `${t.ou.o}-${t.ou.u}${t.ou.p ? `-${t.ou.p}` : ''}` : '–');
@@ -126,10 +130,10 @@ export function StatRow({ label, away, home, children }) {
   );
 }
 
-export function Ranked({ value, rank, total }) {
+export function Ranked({ value, rank, total, digits = 1 }) {
   return (
     <span className="ranked">
-      <span className="val">{fmtNum(value)}</span>
+      <span className="val">{value === null || value === undefined ? '–' : value.toFixed(digits)}</span>
       {rank ? <span className={`rk ${rankTone(rank, total)}`}>#{rank}</span> : null}
     </span>
   );

@@ -1,6 +1,6 @@
-# CFB Edge / CBB Edge
+# CFB Edge / CBB Edge / UCL Edge
 
-Football and basketball betting-research boards on one site; switch sports at the top.
+Football, basketball and Champions League betting-research boards on one site; switch sports at the top.
 
 Personal board of FBS games with each team's record, ATS record, over/under record,
 offense/defense per-game rankings, and player prop consistency. Games get flagged when both
@@ -16,6 +16,16 @@ Tap a team name to see its full schedule against the line.
   from 4), assists and 3-pointers made (every number from 1).
 - Data comes from CollegeBasketballData.com with the same CFBD_API_KEY.
   `npm run data:basketball` pulls just basketball; `npm run data` pulls both.
+
+## Soccer (Champions League)
+
+- Champions League matches only, from ESPN's public feed (no key; unofficial, so it can change).
+- Team stats: W-D-L, goals for and against per match overall, at home and away. On a match card
+  the home team's home split and the away team's away split are highlighted. Each card lists
+  both teams' Champions League results this season.
+- Player props for each team's top 6 by shots (goals count double): goals (1+, 2+), shots and
+  shots on target (three steps around his average), goals + assists (1+, 2+).
+- `npm run data:soccer` pulls just soccer.
 
 ## How data gets to the site
 
