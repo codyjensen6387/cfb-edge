@@ -271,3 +271,36 @@ button.team:hover .name { text-decoration: underline; text-decoration-thickness:
 .res-L { background: var(--bad); }
 .res-D { background: var(--muted); }
 .sblock .hlabel { width: 3.4em; }
+
+/* Brand */
+.brand { margin: 0 0 8px; font-family: var(--display); font-weight: 700; font-size: 1rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.sportwrap { flex-wrap: wrap; }
+
+/* Line movement */
+.paste { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; margin: 18px 0 0; }
+.paste label { display: block; font-size: 0.9rem; margin-bottom: 6px; }
+.paste textarea {
+  width: 100%; font: inherit; font-size: 0.95rem; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 8px 10px; resize: vertical;
+}
+.paste.saved p { margin: 0; }
+.paste-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.pill.primary { background: var(--hot); color: #000; border-color: var(--hot); font-weight: 600; }
+.pill:disabled { opacity: 0.5; cursor: default; }
+.refresh { min-height: 40px; }
+.src-note { font-size: 0.85rem; margin: 0 0 12px; }
+.mv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.mv-row { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; }
+.mv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 6px; }
+.mv-teams { font-family: var(--display); font-weight: 700; font-size: 1.2rem; }
+.tag.nfl { background: var(--cold); color: #000; }
+.tag.cfb { background: var(--raised); color: var(--muted); }
+.mv-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 0; border-top: 1px solid var(--rule); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+.mv-label { width: 3.6em; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+.chip.big { border-color: var(--hot); color: var(--hot); font-weight: 600; }
+.chip.key { border-color: var(--cold); color: var(--cold); }
+.mv-value { color: var(--good); font-weight: 600; }
+.mv-more { margin-top: 16px; }
+.mv-more summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
+.mv-more .mv-list { margin-top: 8px; }
+.mv-unmatched { margin: 6px 0; padding-left: 18px; font-size: 0.9rem; }

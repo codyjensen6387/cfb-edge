@@ -734,7 +734,7 @@ export default function Board({ data }) {
   return (
     <main className="wrap">
       <header className="top">
-        <h1 className="title">CFB Edge</h1>
+        <h1 className="title">College Football</h1>
         <p className="sub">{year} FBS season. Records are season totals against the closing line. Updated {updated} CT.</p>
       </header>
 

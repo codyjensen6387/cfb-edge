@@ -120,6 +120,7 @@ function buildTeams(fbsTeams, games, teamBox) {
     teams[school] = blankTeam({
       name: school,
       conference: pick(t, 'conference') || '',
+      abbr: pick(t, 'abbreviation') || null,
       logo: (pick(t, 'logos') || [])[0] || null,
     });
   }
@@ -187,7 +188,7 @@ function buildTeams(fbsTeams, games, teamBox) {
   const out = {};
   for (const t of list) {
     const avg = Object.fromEntries(Object.entries(t.avg).map(([k, v]) => [k, round1(v)]));
-    out[t.name] = { name: t.name, conference: t.conference, logo: t.logo, su: t.su, ats: t.ats, ou: t.ou, avg, ranks: t.ranks };
+    out[t.name] = { name: t.name, conference: t.conference, abbr: t.abbr, logo: t.logo, su: t.su, ats: t.ats, ou: t.ou, avg, ranks: t.ranks };
   }
   return out;
 }

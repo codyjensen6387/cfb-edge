@@ -362,7 +362,7 @@ export default function Hoops({ data }) {
   return (
     <main className="wrap">
       <header className="top">
-        <h1 className="title">CBB Edge</h1>
+        <h1 className="title">College Basketball</h1>
         <p className="sub">{season - 1}–{String(season).slice(2)} power-conference season. Records are season totals against the closing line. Updated {updated} CT.</p>
       </header>
 

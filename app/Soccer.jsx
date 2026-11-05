@@ -325,7 +325,7 @@ export default function Soccer({ data }) {
   return (
     <main className="wrap">
       <header className="top">
-        <h1 className="title">UCL Edge</h1>
+        <h1 className="title">Champions League</h1>
         <p className="sub">{season}–{String(season + 1).slice(2)} Champions League. Stats count Champions League matches only. Updated {updated} CT.</p>
       </header>
 

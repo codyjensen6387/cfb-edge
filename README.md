@@ -1,6 +1,7 @@
-# CFB Edge / CBB Edge / UCL Edge
+# Cody's Sports Trends
 
-Football, basketball and Champions League betting-research boards on one site; switch sports at the top.
+College football, college basketball and Champions League betting-research boards, plus a
+Line Movement tool, on one site; switch sections at the top.
 
 Personal board of FBS games with each team's record, ATS record, over/under record,
 offense/defense per-game rankings, and player prop consistency. Games get flagged when both
@@ -26,6 +27,15 @@ Tap a team name to see its full schedule against the line.
 - Player props for each team's top 6 by shots (goals count double): goals (1+, 2+), shots and
   shots on target (three steps around his average), goals + assists (1+, 2+).
 - `npm run data:soccer` pulls just soccer.
+
+## Line Movement
+
+Paste the Splash Sports picks page (select all, copy, paste). The site reads every game's
+spread and total, saves the paste on that device, and compares it with current lines:
+college from the last site update until you tap Refresh (then live from CollegeFootballData,
+one API call, with ESPN as a backup), NFL live from ESPN. Games are sorted by how far the line
+moved, with the side that now has the better number, and key numbers (3, 7, 10) flagged.
+The live lines come from `app/api/lines/route.js`, which runs on Vercel.
 
 ## How data gets to the site
 

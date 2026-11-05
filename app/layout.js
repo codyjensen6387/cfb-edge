@@ -1,6 +1,6 @@
 import './globals.css';
 
-export const metadata = { title: 'CFB Edge', description: 'Upcoming FBS games with ATS and over/under trends' };
+export const metadata = { title: 'Cody’s Sports Trends', description: 'Betting trends, player props and line movement' };
 export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default function RootLayout({ children }) {
