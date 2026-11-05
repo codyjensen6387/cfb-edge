@@ -42,7 +42,10 @@ function MoveRow({ g, c }) {
         <span className="mv-label">Spread</span>
         <span>Splash <b>{favText(g.teamA, g.teamB, g.spreadA)}</b></span>
         <span className="muted">now {favText(g.teamA, g.teamB, c.curA)}</span>
-        {c.spreadMove ? <span className={`chip ${bigSpread ? 'big' : ''}`}>moved {pts(c.spreadMove)}</span> : <span className="muted">no change</span>}
+        {g.spreadA === null ? <span className="muted">no spread in your paste</span>
+          : c.curA === null ? <span className="muted">no current spread</span>
+          : c.spreadMove ? <span className={`chip ${bigSpread ? 'big' : ''}`}>moved {pts(c.spreadMove)}</span>
+          : <span className="muted">no change</span>}
         {c.keys.map((k) => <span key={k} className="chip key">key {k}</span>)}
         {c.flipped ? <span className="chip key">favorite flipped</span> : null}
         {c.spreadValue ? <span className="mv-value">Better number: {c.spreadValue.team} {signed(c.spreadValue.line)}</span> : null}
@@ -51,7 +54,10 @@ function MoveRow({ g, c }) {
         <span className="mv-label">Total</span>
         <span>Splash <b>{g.total ?? '–'}</b></span>
         <span className="muted">now {c.curTotal ?? '–'}</span>
-        {c.totalMove ? <span className={`chip ${Math.abs(c.totalMove) >= 3 ? 'big' : ''}`}>moved {pts(c.totalMove)}</span> : <span className="muted">no change</span>}
+        {g.total === null ? <span className="muted">no total in your paste</span>
+          : c.curTotal === null ? <span className="muted">no current total</span>
+          : c.totalMove ? <span className={`chip ${Math.abs(c.totalMove) >= 3 ? 'big' : ''}`}>moved {pts(c.totalMove)}</span>
+          : <span className="muted">no change</span>}
         {c.totalValue ? <span className="mv-value">Better number: {c.totalValue} {g.total}</span> : null}
       </div>
     </li>
@@ -127,6 +133,8 @@ export default function Lines({ football }) {
   const counts = parsed ? {
     cfb: parsed.games.filter((g) => g.league === 'cfb').length,
     nfl: parsed.games.filter((g) => g.league === 'nfl').length,
+    spreads: parsed.games.filter((g) => g.spreadA !== null).length,
+    totals: parsed.games.filter((g) => g.total !== null).length,
   } : null;
 
   const showPaste = !saved || editing;
@@ -162,12 +170,17 @@ export default function Lines({ football }) {
             {parsed.cfbWeek ? `, CFB week ${parsed.cfbWeek}` : ''}{parsed.nflWeek ? `, NFL week ${parsed.nflWeek}` : ''}.
             {parsed.lock ? ` Picks lock ${parsed.lock}.` : ''} <span className="muted">Saved {fmtTime(saved.savedAt)} on this device.</span>
           </p>
+          <p className="muted read-note">Read spreads for {counts.spreads} and totals for {counts.totals} of {parsed.games.length} games.</p>
           <div className="paste-actions">
             <button type="button" className="pill" onClick={() => setEditing(true)}>Replace lines</button>
             <button type="button" className="pill" onClick={() => save(null)}>Clear</button>
           </div>
         </section>
       )}
+
+      {parsed && parsed.games.length > 0 && counts.totals === 0 ? (
+        <p className="notice">No over/unders were found in this paste, so only spreads can be compared. Try copying the picks page again; if it still happens, the totals are formatted in a way the site doesn’t read yet.</p>
+      ) : null}
 
       {parsed && !parsed.games.length ? (
         <p className="notice">Couldn’t find any games in that text. Make sure you copied the whole picks page, including the spreads and O/U lines.</p>

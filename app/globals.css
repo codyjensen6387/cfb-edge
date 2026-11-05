@@ -304,3 +304,4 @@ button.team:hover .name { text-decoration: underline; text-decoration-thickness:
 .mv-more summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .mv-more .mv-list { margin-top: 8px; }
 .mv-unmatched { margin: 6px 0; padding-left: 18px; font-size: 0.9rem; }
+.read-note { margin: 6px 0 0; font-size: 0.88rem; }
