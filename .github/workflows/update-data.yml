@@ -40,7 +40,7 @@ jobs:
       - name: Soccer data
         id: soccer
         continue-on-error: true
-        run: node scripts/fetch-ucl.mjs
+        run: node scripts/fetch-soccer.mjs
 
       - name: Save data to the repo
         run: |

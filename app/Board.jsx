@@ -450,8 +450,9 @@ export function TopList({ title, list, unit, th, onOpen, isTd }) {
                   <>
                     <span className="pstat">{r.avg.toFixed(1)} {unit}</span>
                     {r.rungs.map(({ t, hits }) => (
-                      <span key={t} className={`chip ${hits / r.n >= th ? 'hit' : ''}`}><span className="chip-t">{t}+</span> {hits}/{r.n}</span>
+                      <span key={t} className={`chip ${hits / r.n >= th ? 'hit' : ''}`}><span className="chip-t">{r.rungLabel ? r.rungLabel(t) : `${t}+`}</span> {hits}/{r.n}</span>
                     ))}
+                    {r.extra ? <span className="pstat">{r.extra}</span> : null}
                   </>
                 )}
               </div>

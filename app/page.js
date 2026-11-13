@@ -18,5 +18,6 @@ function load(file) {
 }
 
 export default function Page() {
-  return <App football={load('season.json')} basketball={load('cbb.json')} soccer={load('ucl.json')} />;
+  const nations = { unl: load('unl.json'), cnl: load('cnl.json'), afcon: load('afcon.json') };
+  return <App football={load('season.json')} basketball={load('cbb.json')} soccer={load('ucl.json')} nations={nations} />;
 }

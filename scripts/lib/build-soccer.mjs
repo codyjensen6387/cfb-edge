@@ -1,4 +1,5 @@
-// Pure functions for the Champions League: ESPN scoreboard and match summaries in, ucl.json out.
+// Pure functions for soccer competitions (Champions League, Nations Leagues, AFCON):
+// ESPN scoreboard and match summaries in, one <competition>.json out.
 // ESPN's feed is unofficial, so every field is read defensively.
 
 import { pick } from './build.mjs';
@@ -59,8 +60,26 @@ const cameOn = (p) => {
   return s === true || (s && typeof s === 'object' && pick(s, 'didSub') === true);
 };
 
-// Players who appeared: [athleteId, name, goals, assists, shots, shotsOnTarget, started].
+// Yellow and red cards per athlete from the match's key events (a backup for roster stats).
+function cardsFromEvents(summary) {
+  const out = {};
+  for (const ev of pick(summary, 'keyEvents') || []) {
+    const text = String(pick(pick(ev, 'type') || {}, 'text', 'type') || '').toLowerCase();
+    const kind = text.includes('red') ? 'r' : text.includes('yellow') ? 'y' : null;
+    if (!kind) continue;
+    for (const p of pick(ev, 'participants') || []) {
+      const id = pick(pick(p, 'athlete') || {}, 'id');
+      if (id === undefined) continue;
+      const c = (out[String(id)] ||= { y: 0, r: 0 });
+      c[kind]++;
+    }
+  }
+  return out;
+}
+
+// Players who appeared: [athleteId, name, goals, assists, shots, shotsOnTarget, started, yellows, reds].
 export function trimSummary(summary) {
+  const evCards = cardsFromEvents(summary);
   return (pick(summary, 'rosters') || []).map((r) => {
     const teamId = String(pick(pick(r, 'team') || {}, 'id') ?? '');
     const players = (pick(r, 'roster') || [])
@@ -71,14 +90,17 @@ export function trimSummary(summary) {
         const played = started || cameOn(p) || (s.appearances ?? 0) > 0 || (s.totalShots ?? 0) > 0 || (s.totalGoals ?? 0) > 0;
         const name = pick(a, 'displayName', 'fullName', 'shortName');
         if (!played || !name) return null;
-        return [String(pick(a, 'id') ?? name), name, s.totalGoals ?? 0, s.goalAssists ?? 0, s.totalShots ?? 0, s.shotsOnTarget ?? 0, started ? 1 : 0];
+        const id = String(pick(a, 'id') ?? name);
+        const ev = evCards[id] || { y: 0, r: 0 };
+        return [id, name, s.totalGoals ?? 0, s.goalAssists ?? 0, s.totalShots ?? 0, s.shotsOnTarget ?? 0, started ? 1 : 0,
+          s.yellowCards ?? ev.y, s.redCards ?? ev.r];
       })
       .filter(Boolean);
     return { teamId, players };
   }).filter((r) => r.teamId && r.players.length);
 }
 
-export function buildUcl(state) {
+export function buildSoccer(state) {
   const events = Object.values(state.events)
     .filter((e) => e.home.name && e.away.name && e.start)
     .sort((a, b) => String(a.start).localeCompare(String(b.start)));
@@ -137,7 +159,7 @@ export function buildUcl(state) {
     home: e.home.name, away: e.away.name, homeScore: e.homeScore, awayScore: e.awayScore,
   }));
 
-  // Player logs: [yyyymmdd, goals, assists, shots, shotsOnTarget, started].
+  // Player logs: [yyyymmdd, goals, assists, shots, shotsOnTarget, started, yellows, reds].
   const nameById = Object.fromEntries(list.map((t) => [t.id, t.name]));
   const byTeam = {};
   for (const e of events) {
@@ -149,16 +171,23 @@ export function buildUcl(state) {
       const teamName = nameById[teamId];
       if (!teamName) continue;
       const roster = (byTeam[teamName] ||= {});
-      for (const [id, name, goals, ast, shots, sot, started] of players) {
-        (roster[id] ||= { n: name, g: [] }).g.push([date, goals, ast, shots, sot, started]);
+      for (const [id, name, goals, ast, shots, sot, started, yellows = 0, reds = 0] of players) {
+        (roster[id] ||= { n: name, g: [] }).g.push([date, goals, ast, shots, sot, started, yellows, reds]);
       }
     }
   }
   const players = {};
   for (const [teamName, roster] of Object.entries(byTeam)) {
-    const score = (p) => p.g.reduce((s, x) => s + x[3] + 2 * x[1], 0);
-    players[teamName] = Object.values(roster).sort((a, b) => score(b) - score(a)).slice(0, 10);
+    // Keep the attackers (shots, goals) and the players who pick up cards.
+    const attack = (p) => p.g.reduce((s, x) => s + x[3] + 2 * x[1], 0);
+    const cards = (p) => p.g.reduce((s, x) => s + (x[6] || 0) + 2 * (x[7] || 0), 0);
+    const all = Object.values(roster);
+    const keep = new Set([
+      ...[...all].sort((a, b) => attack(b) - attack(a)).slice(0, 10),
+      ...all.filter((p) => cards(p) > 0).sort((a, b) => cards(b) - cards(a)).slice(0, 5),
+    ]);
+    players[teamName] = [...keep];
   }
 
-  return { season: state.season, teams, games, players };
+  return { season: state.season, key: state.key, teams, games, players };
 }

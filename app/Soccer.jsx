@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TZ, StatRow, Ranked, TeamName, Rungs, MIN_PLAYER_GAMES, benchScore, TopList, useRememberedSet, MultiSelect } from './Board';
-import { soccerProps } from '@/lib/soccer-props';
+import { soccerProps, cardProps } from '@/lib/soccer-props';
 
 // ---------- Dates and kickoff windows (Central time) ----------
 
@@ -19,16 +19,26 @@ function kickoff(g, withDate = true) {
   return new Date(g.start).toLocaleString('en-US', opts);
 }
 
-// Champions League matches kick off in two windows: about 11:45 am and 2:00 pm Central.
-const SLOTS = [
-  { key: 'early', label: 'Early kickoff (about 11:45 am)' },
-  { key: 'late', label: 'Late kickoff (about 2 pm)' },
-];
+// Champions League matches kick off in two windows (about 11:45 am and 2:00 pm Central);
+// national-team matches are spread across the day, so they get broader windows.
+const SLOT_SETS = {
+  ucl: [
+    { key: 'early', label: 'Early kickoff (about 11:45 am)' },
+    { key: 'late', label: 'Late kickoff (about 2 pm)' },
+  ],
+  day: [
+    { key: 'morning', label: 'Morning (before noon)' },
+    { key: 'afternoon', label: 'Afternoon (noon–5 pm)' },
+    { key: 'evening', label: 'Evening (5 pm or later)' },
+  ],
+};
 const minuteFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
-function slotOf(g) {
-  if (!g.start) return 'late';
+function slotOf(g, mode) {
+  if (!g.start) return mode === 'ucl' ? 'late' : 'evening';
   const parts = Object.fromEntries(minuteFmt.formatToParts(new Date(g.start)).map((p) => [p.type, p.value]));
-  return Number(parts.hour) * 60 + Number(parts.minute) < 13 * 60 + 30 ? 'early' : 'late';
+  const mins = Number(parts.hour) * 60 + Number(parts.minute);
+  if (mode === 'ucl') return mins < 13 * 60 + 30 ? 'early' : 'late';
+  return mins < 12 * 60 ? 'morning' : mins < 17 * 60 ? 'afternoon' : 'evening';
 }
 
 const recText = (t) => (t ? `${t.w}-${t.d}-${t.l}` : '–');
@@ -78,6 +88,25 @@ function StatLine({ label, s, n, th, suffix }) {
   );
 }
 
+function CardRows({ players, th }) {
+  const list = useMemo(() => cardProps(players), [players]);
+  if (!list.length) return null;
+  return (
+    <div className="pgroup cards">
+      <h5>Cards (most booked)</h5>
+      {list.map((p) => (
+        <div className="prow" key={p.name}>
+          <span className="pname">{p.name}</span>
+          <span className={`chip ${p.booked / p.n >= th ? 'hit' : ''}`}>Booked in {p.booked}/{p.n}</span>
+          <span className="card-count"><span className="card y" aria-hidden="true" />{p.yellows}</span>
+          {p.reds ? <span className="card-count"><span className="card r" aria-hidden="true" />{p.reds}</span> : null}
+          <span className="sr-only">{p.yellows} yellow, {p.reds} red</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SoccerTeamProps({ name, players, th }) {
   const list = useMemo(() => soccerProps(players), [players]);
   return (
@@ -96,13 +125,14 @@ function SoccerTeamProps({ name, players, th }) {
           <StatLine label="G+A" s={p.ga} n={p.n} th={th} />
         </div>
       ))}
+      <CardRows players={players} th={th} />
     </div>
   );
 }
 
 // ---------- Game card ----------
 
-function GameCard({ g, teams, games, players, th, total, onOpen }) {
+function GameCard({ g, teams, games, players, th, total, onOpen, comp }) {
   const A = teams[g.away], H = teams[g.home];
   // Highlight the split that applies to this match: home team at home, away team away.
   const cell = (t, k, mode) => (
@@ -138,7 +168,7 @@ function GameCard({ g, teams, games, players, th, total, onOpen }) {
         <StatRow label="At home" away={cell(A, 'homeGa', off)} home={cell(H, 'homeGa', on)} />
         <StatRow label="Away" away={cell(A, 'awayGa', on)} home={cell(H, 'awayGa', off)} />
 
-        <h3 className="group">Champions League results this season</h3>
+        <h3 className="group">{comp} results this season</h3>
         <div className="hist-pair">
           <SeasonResults team={g.away} games={games} exclude={g.id} onOpen={onOpen} />
           <SeasonResults team={g.home} games={games} exclude={g.id} onOpen={onOpen} />
@@ -156,14 +186,14 @@ function GameCard({ g, teams, games, players, th, total, onOpen }) {
 
 // ---------- Team page ----------
 
-function TeamView({ name, teams, games, players, th, total, onOpen, onClose }) {
+function TeamView({ name, teams, games, players, th, total, onOpen, onClose, comp }) {
   const t = teams[name];
   const schedule = useMemo(() => games.filter((g) => g.home === name || g.away === name), [games, name]);
   if (!t) {
     return (
       <section className="teamview">
         <button type="button" className="back" onClick={onClose}>All matches</button>
-        <p className="notice">No Champions League team named {name}.</p>
+        <p className="notice">No {comp} team named {name}.</p>
       </section>
     );
   }
@@ -219,14 +249,20 @@ function TeamView({ name, teams, games, players, th, total, onOpen, onClose }) {
 
 // ---------- Top props for the day ----------
 
-function TopProps({ games, teams, players, th, onOpen }) {
+function TopProps({ games, teams, players, th, onOpen, comp }) {
   const pools = useMemo(() => {
-    const out = { goals: [], shots: [], sot: [], ga: [] };
+    const out = { goals: [], shots: [], sot: [], ga: [], cards: [] };
     for (const g of games) {
       for (const [team, opp, isHome] of [[g.away, g.home, false], [g.home, g.away, true]]) {
         const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: kickoff(g, false) };
         for (const p of soccerProps(players[team])) {
-          for (const k of Object.keys(out)) out[k].push({ ...who, name: p.name, n: p.n, avg: p[k].avg, rungs: p[k].rungs });
+          for (const k of ['goals', 'shots', 'sot', 'ga']) out[k].push({ ...who, name: p.name, n: p.n, avg: p[k].avg, rungs: p[k].rungs });
+        }
+        for (const p of cardProps(players[team])) {
+          out.cards.push({
+            ...who, name: p.name, n: p.n, avg: p.avg, rungs: p.rungs, rungLabel: () => 'Booked',
+            extra: `${p.yellows} yellow${p.reds ? `, ${p.reds} red` : ''}`,
+          });
         }
       }
     }
@@ -244,13 +280,15 @@ function TopProps({ games, teams, players, th, onOpen }) {
     <>
       <p className="muted tp-note">
         Top 6 players per team by shots (goals count double), ranked by how many of their benchmarks they clear at your
-        highlight % or better (green), then by overall hit rate. Champions League matches only; players need {MIN_PLAYER_GAMES}+ appearances.
+        highlight % or better (green), then by overall hit rate. Cards lists each team’s 3 most-booked players.
+        {comp} matches only; players need {MIN_PLAYER_GAMES}+ appearances.
       </p>
       <div className="tp-grid">
         <TopList title="Goals" list={sorted.goals} unit="goals/match" th={th} onOpen={onOpen} />
         <TopList title="Shots" list={sorted.shots} unit="shots/match" th={th} onOpen={onOpen} />
         <TopList title="Shots on target" list={sorted.sot} unit="on target/match" th={th} onOpen={onOpen} />
         <TopList title="Goals + assists" list={sorted.ga} unit="G+A/match" th={th} onOpen={onOpen} />
+        <TopList title="Cards" list={sorted.cards} unit="cards/match" th={th} onOpen={onOpen} />
       </div>
     </>
   );
@@ -258,8 +296,10 @@ function TopProps({ games, teams, players, th, onOpen }) {
 
 // ---------- Page ----------
 
-export default function Soccer({ data }) {
+export default function Soccer({ data, title, slotMode = 'ucl', storageKey = 'ucledge' }) {
   const { teams, games, players, season, updatedAt } = data;
+  const comp = title || data.name || 'Champions League';
+  const SLOTS = SLOT_SETS[slotMode] || SLOT_SETS.day;
   const dates = useMemo(() => [...new Set(games.map((g) => g.date))].sort(), [games]);
   // Start from the day the data was built (same on server and browser), then jump to the real today.
   const defaultDate = useMemo(() => {
@@ -275,7 +315,7 @@ export default function Soccer({ data }) {
   const [teamView, setTeamView] = useState(null);
   const [now, setNow] = useState(null);
   const [today, setToday] = useState(null);
-  const [hiddenSlots, setHiddenSlots] = useRememberedSet('ucledge.hiddenSlots');
+  const [hiddenSlots, setHiddenSlots] = useRememberedSet(`${storageKey}.hiddenSlots`);
   const savedScroll = useRef(0);
 
   useEffect(() => {
@@ -317,16 +357,16 @@ export default function Soccer({ data }) {
   const dayGames = allDay.filter(matchesQuery);
   const openGames = dayIsDone ? dayGames : dayGames.filter((g) => !hasStarted(g));
   const startedGames = dayIsDone ? [] : dayGames.filter(hasStarted);
-  const propGames = dayGames.filter((g) => dayIsDone || !hasStarted(g)).filter((g) => !hiddenSlots.has(slotOf(g)));
+  const propGames = dayGames.filter((g) => dayIsDone || !hasStarted(g)).filter((g) => !hiddenSlots.has(slotOf(g, slotMode)));
 
-  const card = (g) => <GameCard key={g.id} g={g} teams={teams} games={games} players={players} th={th} total={total} onOpen={openTeam} />;
+  const card = (g) => <GameCard key={g.id} g={g} teams={teams} games={games} players={players} th={th} total={total} onOpen={openTeam} comp={comp} />;
   const updated = new Date(updatedAt).toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
   return (
     <main className="wrap">
       <header className="top">
-        <h1 className="title">Champions League</h1>
-        <p className="sub">{season}–{String(season + 1).slice(2)} Champions League. Stats count Champions League matches only. Updated {updated} CT.</p>
+        <h1 className="title">{comp}</h1>
+        <p className="sub">{season}–{String(season + 1).slice(2)} {comp}. Stats count {comp} matches only. Updated {updated} CT.</p>
       </header>
 
       <section className="controls" aria-label="Filters">
@@ -354,7 +394,7 @@ export default function Soccer({ data }) {
       </section>
 
       {teamView ? (
-        <TeamView name={teamView} teams={teams} games={games} players={players} th={th} total={total} onOpen={openTeam} onClose={closeTeam} />
+        <TeamView name={teamView} teams={teams} games={games} players={players} th={th} total={total} onOpen={openTeam} onClose={closeTeam} comp={comp} />
       ) : (
         <>
           {teamMatches.length ? (
@@ -370,9 +410,9 @@ export default function Soccer({ data }) {
           </div>
 
           {dates.length === 0 ? (
-            <p className="notice">No Champions League matches posted yet.</p>
+            <p className="notice">No {comp} matches posted yet.</p>
           ) : view === 'props' ? (
-            <TopProps games={propGames} teams={teams} players={players} th={th} onOpen={openTeam} />
+            <TopProps games={propGames} teams={teams} players={players} th={th} onOpen={openTeam} comp={comp} />
           ) : dayGames.length === 0 ? (
             <p className="notice">No matches for that team on this day.</p>
           ) : (
@@ -393,7 +433,7 @@ export default function Soccer({ data }) {
 
       <footer className="foot">
         Data from ESPN’s public scoreboard and match reports (unofficial; it can change without notice).
-        Rankings are among this season’s Champions League teams. A player’s matches are the ones he started or came on in.
+        Rankings are among this season’s {comp} teams. A player’s matches are the ones he started or came on in.
       </footer>
     </main>
   );

@@ -305,3 +305,15 @@ button.team:hover .name { text-decoration: underline; text-decoration-thickness:
 .mv-more .mv-list { margin-top: 8px; }
 .mv-unmatched { margin: 6px 0; padding-left: 18px; font-size: 0.9rem; }
 .read-note { margin: 6px 0 0; font-size: 0.88rem; }
+
+/* Nations League competition picker */
+.comp-pick-wrap { padding-top: 12px; padding-bottom: 0; }
+.comp-pick { flex-wrap: wrap; margin: 0; }
+.comp-pick button { font-size: 1rem; }
+
+/* Cards */
+.card-count { display: inline-flex; align-items: center; gap: 4px; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.card { display: inline-block; width: 9px; height: 13px; border-radius: 2px; }
+.card.y { background: #f2c94c; }
+.card.r { background: #e5484d; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

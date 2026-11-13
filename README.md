@@ -18,15 +18,20 @@ Tap a team name to see its full schedule against the line.
 - Data comes from CollegeBasketballData.com with the same CFBD_API_KEY.
   `npm run data:basketball` pulls just basketball; `npm run data` pulls both.
 
-## Soccer (Champions League)
+## Soccer: UCL and Nations League tabs
 
-- Champions League matches only, from ESPN's public feed (no key; unofficial, so it can change).
+- UCL: Champions League. Nations League: UEFA Nations League, CONCACAF Nations League, and the
+  Africa Cup of Nations with its qualifiers (picker at the top of the tab).
+- All from ESPN's public feed (no key; unofficial, so it can change). Each competition only
+  counts its own matches, so national-team player stats never include club games.
 - Team stats: W-D-L, goals for and against per match overall, at home and away. On a match card
   the home team's home split and the away team's away split are highlighted. Each card lists
-  both teams' Champions League results this season.
+  both teams' results in that competition.
 - Player props for each team's top 6 by shots (goals count double): goals (1+, 2+), shots and
-  shots on target (three steps around his average), goals + assists (1+, 2+).
-- `npm run data:soccer` pulls just soccer.
+  shots on target (three steps around his average), goals + assists (1+, 2+). Cards: each
+  team's 3 most-booked players, with yellows and reds accumulated and how often they're booked.
+- `npm run data:soccer` pulls all four; `node scripts/fetch-soccer.mjs unl` pulls one
+  (ucl, unl, cnl or afcon).
 
 ## Line Movement
 
