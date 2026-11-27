@@ -209,7 +209,11 @@ button.team:hover .name { text-decoration: underline; text-decoration-thickness:
 
 /* Started games */
 .started { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--rule); }
-.started-toggle { margin-bottom: 14px; }
+.started-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.started-title { font-family: var(--display); font-weight: 700; font-size: 1.5rem; margin: 0; }
+.started-title .muted { font-family: var(--body); font-weight: 400; font-size: 0.95rem; margin-left: 6px; }
+.started .game { opacity: 0.92; }
+.tp-when.started { color: var(--muted); }
 
 /* Line source */
 .src { margin: 4px 0 0; font-size: 0.78rem; color: var(--muted); }

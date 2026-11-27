@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TZ, StatRow, Ranked, TeamName, Rungs, MIN_PLAYER_GAMES, benchScore, TopList, useRememberedSet, MultiSelect } from './Board';
+import {
+  TZ, StatRow, Ranked, TeamName, Rungs, MIN_PLAYER_GAMES, benchScore, TopList, useRememberedSet, MultiSelect,
+  StartedSection, IncludeStarted, tagStarted,
+} from './Board';
 import { soccerProps, cardProps } from '@/lib/soccer-props';
 
 // ---------- Dates and kickoff windows (Central time) ----------
@@ -249,12 +252,12 @@ function TeamView({ name, teams, games, players, th, total, onOpen, onClose, com
 
 // ---------- Top props for the day ----------
 
-function TopProps({ games, teams, players, th, onOpen, comp }) {
+function TopProps({ games, teams, players, th, onOpen, comp, startedCount }) {
   const pools = useMemo(() => {
     const out = { goals: [], shots: [], sot: [], ga: [], cards: [] };
     for (const g of games) {
       for (const [team, opp, isHome] of [[g.away, g.home, false], [g.home, g.away, true]]) {
-        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: kickoff(g, false) };
+        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: g.startedTag || kickoff(g, false), started: Boolean(g.startedTag) };
         for (const p of soccerProps(players[team])) {
           for (const k of ['goals', 'shots', 'sot', 'ga']) out[k].push({ ...who, name: p.name, n: p.n, avg: p[k].avg, rungs: p[k].rungs });
         }
@@ -275,7 +278,14 @@ function TopProps({ games, teams, players, th, onOpen, comp }) {
     return Object.fromEntries(Object.entries(pools).map(([k, v]) => [k, byBench(v)]));
   }, [pools, th]);
 
-  if (!games.length) return <p className="notice">No matches left to show for this day with these filters.</p>;
+  if (!games.length) {
+    return (
+      <p className="notice">
+        No upcoming matches to show with these filters.
+        {startedCount ? ' Turn on “Include started games” to see players from matches already under way.' : ''}
+      </p>
+    );
+  }
   return (
     <>
       <p className="muted tp-note">
@@ -311,7 +321,7 @@ export default function Soccer({ data, title, slotMode = 'ucl', storageKey = 'uc
   const [view, setView] = useState('games');
   const [threshold, setThreshold] = useState(65);
   const [query, setQuery] = useState('');
-  const [showStarted, setShowStarted] = useState(false);
+  const [includeStarted, setIncludeStarted] = useState(false);
   const [teamView, setTeamView] = useState(null);
   const [now, setNow] = useState(null);
   const [today, setToday] = useState(null);
@@ -357,7 +367,11 @@ export default function Soccer({ data, title, slotMode = 'ucl', storageKey = 'uc
   const dayGames = allDay.filter(matchesQuery);
   const openGames = dayIsDone ? dayGames : dayGames.filter((g) => !hasStarted(g));
   const startedGames = dayIsDone ? [] : dayGames.filter(hasStarted);
-  const propGames = dayGames.filter((g) => dayIsDone || !hasStarted(g)).filter((g) => !hiddenSlots.has(slotOf(g, slotMode)));
+  const propGames = dayGames
+    .filter((g) => dayIsDone || includeStarted || !hasStarted(g))
+    .filter((g) => !hiddenSlots.has(slotOf(g, slotMode)))
+    .map((g) => tagStarted(g, !dayIsDone && hasStarted(g)));
+  const propStartedCount = dayIsDone ? 0 : allDay.filter(hasStarted).length;
 
   const card = (g) => <GameCard key={g.id} g={g} teams={teams} games={games} players={players} th={th} total={total} onOpen={openTeam} comp={comp} />;
   const updated = new Date(updatedAt).toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -379,6 +393,7 @@ export default function Soccer({ data, title, slotMode = 'ucl', storageKey = 'uc
               </select>
             </label>
             {view === 'props' ? <MultiSelect label="Kickoff" options={SLOTS} hidden={hiddenSlots} setHidden={setHiddenSlots} /> : null}
+            {view === 'props' && propStartedCount ? <IncludeStarted checked={includeStarted} onChange={setIncludeStarted} /> : null}
           </>
         ) : null}
         <label>
@@ -412,20 +427,13 @@ export default function Soccer({ data, title, slotMode = 'ucl', storageKey = 'uc
           {dates.length === 0 ? (
             <p className="notice">No {comp} matches posted yet.</p>
           ) : view === 'props' ? (
-            <TopProps games={propGames} teams={teams} players={players} th={th} onOpen={openTeam} comp={comp} />
+            <TopProps games={propGames} teams={teams} players={players} th={th} onOpen={openTeam} comp={comp} startedCount={propStartedCount} />
           ) : dayGames.length === 0 ? (
             <p className="notice">No matches for that team on this day.</p>
           ) : (
             <>
-              {openGames.length ? <div className="games">{openGames.map(card)}</div> : <p className="notice">Every match shown for {dateLabel(date)} has kicked off.</p>}
-              {startedGames.length ? (
-                <div className="started">
-                  <button type="button" className="pill started-toggle" aria-expanded={showStarted} onClick={() => setShowStarted((v) => !v)}>
-                    {showStarted ? 'Hide' : 'Show'} {startedGames.length} started or finished {startedGames.length === 1 ? 'match' : 'matches'}
-                  </button>
-                  {showStarted ? <div className="games">{startedGames.map(card)}</div> : null}
-                </div>
-              ) : null}
+              {openGames.length ? <div className="games">{openGames.map(card)}</div> : <p className="notice">Every match shown for {dateLabel(date)} has kicked off. They’re below under Started or finished.</p>}
+              <StartedSection items={startedGames} card={card} forceOpen={Boolean(q)} noun="match" nouns="matches" />
             </>
           )}
         </>

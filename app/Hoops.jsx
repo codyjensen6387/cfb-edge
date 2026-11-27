@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   TZ, pct, fmtPct, signed, lineText, teamResult, rates, flagsFor, recText, atsText, ouText,
   Bar, StatRow, Ranked, TeamName, Rungs, MIN_PLAYER_GAMES, benchScore, TopList,
-  useRememberedSet, MultiSelect,
+  useRememberedSet, MultiSelect, StartedSection, IncludeStarted, tagStarted,
 } from './Board';
 import { hoopsProps } from '@/lib/hoops-props';
 
@@ -239,13 +239,13 @@ function TeamView({ name, teams, games, players, th, rankedCount, onOpen, onClos
 
 // ---------- Top props for the day ----------
 
-function TopProps({ games, teams, players, th, onOpen }) {
+function TopProps({ games, teams, players, th, onOpen, startedCount }) {
   const pools = useMemo(() => {
     const out = { pts: [], reb: [], ast: [], tpm: [] };
     for (const g of games) {
       for (const [team, opp, isHome] of [[g.away, g.home, false], [g.home, g.away, true]]) {
         if (!teams[team]) continue; // props only for power-conference teams
-        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: tipoff(g, false) };
+        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: g.startedTag || tipoff(g, false), started: Boolean(g.startedTag) };
         for (const p of hoopsProps(players[team])) {
           for (const k of Object.keys(out)) out[k].push({ ...who, name: p.name, n: p.n, avg: p[k].avg, rungs: p[k].rungs });
         }
@@ -260,7 +260,14 @@ function TopProps({ games, teams, players, th, onOpen }) {
     return Object.fromEntries(Object.entries(pools).map(([k, v]) => [k, byBench(v)]));
   }, [pools, th]);
 
-  if (!games.length) return <p className="notice">No games left to show for this day with these filters.</p>;
+  if (!games.length) {
+    return (
+      <p className="notice">
+        No upcoming games to show with these filters.
+        {startedCount ? ' Turn on “Include started games” to see players from games already under way.' : ''}
+      </p>
+    );
+  }
   return (
     <>
       <p className="muted tp-note">
@@ -294,7 +301,7 @@ export default function Hoops({ data }) {
   const [minGames, setMinGames] = useState(4);
   const [show, setShow] = useState('all');
   const [query, setQuery] = useState('');
-  const [showStarted, setShowStarted] = useState(false);
+  const [includeStarted, setIncludeStarted] = useState(false);
   const [teamView, setTeamView] = useState(null);
   const [now, setNow] = useState(null);
   const [today, setToday] = useState(null);
@@ -351,8 +358,10 @@ export default function Hoops({ data }) {
   const openGames = dayIsDone ? dayGames : dayGames.filter((g) => !hasStarted(g));
   const startedGames = dayIsDone ? [] : dayGames.filter(hasStarted);
   const propGames = allToday.filter(matchesQuery).filter(confVisible)
-    .filter((g) => dayIsDone || !hasStarted(g))
-    .filter((g) => !hiddenSlots.has(tipSlot(g)));
+    .filter((g) => dayIsDone || includeStarted || !hasStarted(g))
+    .filter((g) => !hiddenSlots.has(tipSlot(g)))
+    .map((g) => tagStarted(g, !dayIsDone && hasStarted(g)));
+  const propStartedCount = dayIsDone ? 0 : allToday.filter(hasStarted).length;
   const slotOptions = TIP_SLOTS.filter((o) => !o.extra || allToday.some((g) => tipSlot(g) === o.key));
 
   const card = (g) => (
@@ -389,6 +398,7 @@ export default function Hoops({ data }) {
             ) : null}
             <MultiSelect label="Conferences" options={CONFS.map((c) => ({ key: c, label: c }))} hidden={hiddenConfs} setHidden={setHiddenConfs} />
             {view === 'props' ? <MultiSelect label="Tip-off" options={slotOptions} hidden={hiddenSlots} setHidden={setHiddenSlots} /> : null}
+            {view === 'props' && propStartedCount ? <IncludeStarted checked={includeStarted} onChange={setIncludeStarted} /> : null}
           </>
         ) : null}
         <label>
@@ -430,20 +440,13 @@ export default function Hoops({ data }) {
           {dates.length === 0 ? (
             <p className="notice">No power-conference games posted yet.</p>
           ) : view === 'props' ? (
-            <TopProps games={propGames} teams={teams} players={players} th={th} onOpen={openTeam} />
+            <TopProps games={propGames} teams={teams} players={players} th={th} onOpen={openTeam} startedCount={propStartedCount} />
           ) : dayGames.length === 0 ? (
             <p className="notice">No games match these filters. Check the conference menu, lower the flag percentage, or switch Show to All games.</p>
           ) : (
             <>
-              {openGames.length ? <div className="games">{openGames.map(card)}</div> : <p className="notice">Every game shown for {dateLabel(date)} has tipped off.</p>}
-              {startedGames.length ? (
-                <div className="started">
-                  <button type="button" className="pill started-toggle" aria-expanded={showStarted} onClick={() => setShowStarted((v) => !v)}>
-                    {showStarted ? 'Hide' : 'Show'} {startedGames.length} started or finished {startedGames.length === 1 ? 'game' : 'games'}
-                  </button>
-                  {showStarted ? <div className="games">{startedGames.map(card)}</div> : null}
-                </div>
-              ) : null}
+              {openGames.length ? <div className="games">{openGames.map(card)}</div> : <p className="notice">Every game shown for {dateLabel(date)} has tipped off. They’re below under Started or finished.</p>}
+              <StartedSection items={startedGames} card={card} forceOpen={Boolean(q)} />
             </>
           )}
         </>

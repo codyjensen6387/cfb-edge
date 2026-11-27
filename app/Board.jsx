@@ -437,7 +437,7 @@ export function TopList({ title, list, unit, th, onOpen, isTd }) {
                 <span className="muted">
                   <button type="button" className="linkish" onClick={() => onOpen(r.team)}>{r.team}</button> {r.at} {r.opp}
                 </span>
-                <span className="tp-when">{r.when}</span>
+                <span className={`tp-when ${r.started ? 'started' : ''}`}>{r.when}</span>
               </div>
               <div className="tp-line">
                 {isTd ? (
@@ -467,14 +467,14 @@ export function TopList({ title, list, unit, th, onOpen, isTd }) {
   );
 }
 
-function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
+function TopProps({ games, teams, players, includeFcs, th, onOpen, startedCount }) {
   const pools = useMemo(() => {
     const out = { td: [], rush: [], recYds: [], catches: [], passYds: [], passTd: [] };
     for (const g of games) {
       for (const [team, opp, isHome] of [[g.away, g.home, false], [g.home, g.away, true]]) {
         if (!teams[team]) continue; // FCS teams have no player data
         const p = teamProps(players[team], includeFcs);
-        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: shortKick(g) };
+        const who = { team, opp, at: g.neutral || isHome ? 'vs' : '@', when: g.startedTag || shortKick(g), started: Boolean(g.startedTag) };
         p.touchdowns.forEach((r) => out.td.push({ ...who, name: r.name, n: r.n, hits: r.tdGames, td: r.td, multi: r.multi, streak: r.streak, sinceLast: r.sinceLast }));
         p.rushers.forEach((r) => out.rush.push({ ...who, name: r.name, n: r.n, avg: r.avg, rungs: r.rungs }));
         p.receivers.forEach((r) => {
@@ -501,7 +501,14 @@ function TopProps({ games, teams, players, includeFcs, th, onOpen }) {
     };
   }, [pools, th]);
 
-  if (!games.length) return <p className="notice">No games left to show for this week with these filters.</p>;
+  if (!games.length) {
+    return (
+      <p className="notice">
+        No upcoming games to show with these filters.
+        {startedCount ? ' Turn on “Include started games” to see players from games already under way.' : ''}
+      </p>
+    );
+  }
   return (
     <>
       <p className="muted tp-note">
@@ -539,6 +546,39 @@ export function useRememberedSet(key) {
   };
   return [value, set];
 }
+
+// Games that have kicked off: kept on the page in their own section at the bottom.
+// Open by default; it can be collapsed, but a search always shows it.
+export function StartedSection({ items, card, forceOpen, noun = 'game', nouns = 'games' }) {
+  const [hidden, setHidden] = useState(false);
+  if (!items.length) return null;
+  const open = forceOpen || !hidden;
+  const label = `${items.length} ${items.length === 1 ? noun : nouns}`;
+  return (
+    <section className="started" aria-label="Started or finished">
+      <div className="started-head">
+        <h2 className="started-title">Started or finished <span className="muted">{label}</span></h2>
+        {forceOpen ? null : (
+          <button type="button" className="pill" aria-expanded={open} onClick={() => setHidden((h) => !h)}>{open ? 'Hide' : 'Show'}</button>
+        )}
+      </div>
+      {open ? <div className="games">{items.map(card)}</div> : null}
+    </section>
+  );
+}
+
+// Props-page switch for players from games that are already under way or over.
+export function IncludeStarted({ checked, onChange }) {
+  return (
+    <label className="check">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>Include started games</span>
+    </label>
+  );
+}
+
+// Marks a props-page game that has started, so its players show "Final" or "Started" instead of a time.
+export const tagStarted = (g, started) => (started ? { ...g, startedTag: g.completed ? 'Final' : 'Started' } : g);
 
 export function MultiSelect({ label, options, hidden, setHidden }) {
   const [open, setOpen] = useState(false);
@@ -598,7 +638,7 @@ export default function Board({ data }) {
   const [query, setQuery] = useState('');
   const [includeFcs, setIncludeFcs] = useState(true);
   const [teamView, setTeamView] = useState(null);
-  const [showStarted, setShowStarted] = useState(false);
+  const [includeStarted, setIncludeStarted] = useState(false);
   const [view, setView] = useState('games');
   const [now, setNow] = useState(null);
   const [hiddenConfs, setHiddenConfs] = useRememberedSet(CONF_KEY);
@@ -669,10 +709,12 @@ export default function Board({ data }) {
       .filter((g) => g.week === week)
       .filter((g) => !q || g.home.toLowerCase().includes(q) || g.away.toLowerCase().includes(q))
       .filter(confVisible)
-      .filter((g) => weekIsDone || !hasStarted(g))
-      .filter((g) => !hiddenSlots.has(slotOf(g)));
+      .filter((g) => weekIsDone || includeStarted || !hasStarted(g))
+      .filter((g) => !hiddenSlots.has(slotOf(g)))
+      .map((g) => tagStarted(g, !weekIsDone && hasStarted(g)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games, week, q, hiddenConfs, hiddenSlots, weekIsDone, now]);
+  }, [games, week, q, hiddenConfs, hiddenSlots, weekIsDone, now, includeStarted]);
+  const propStartedCount = weekIsDone ? 0 : games.filter((g) => g.week === week && hasStarted(g)).length;
   // Extra windows (Sunday/Monday, time not set) only appear when this week has such games.
   const slotOptions = useMemo(() => {
     const present = new Set(games.filter((g) => g.week === week).map(slotOf));
@@ -707,6 +749,7 @@ export default function Board({ data }) {
           </label> : null}
           <MultiSelect label="Conferences" options={conferences.map((c) => ({ key: c, label: c }))} hidden={hiddenConfs} setHidden={setHiddenConfs} />
           {view === 'props' ? <MultiSelect label="Kickoff" options={slotOptions} hidden={hiddenSlots} setHidden={setHiddenSlots} /> : null}
+          {view === 'props' && propStartedCount ? <IncludeStarted checked={includeStarted} onChange={setIncludeStarted} /> : null}
         </>
       ) : null}
       <label>
@@ -763,7 +806,7 @@ export default function Board({ data }) {
           {weekIsDone && week !== null ? <p className="muted weeknote">Week {week} is final. Records and stats shown are current season totals.</p> : null}
 
           {view === 'props' ? (
-            <TopProps games={propGames} teams={teams} players={players} includeFcs={includeFcs} th={th} onOpen={openTeam} />
+            <TopProps games={propGames} teams={teams} players={players} includeFcs={includeFcs} th={th} onOpen={openTeam} startedCount={propStartedCount} />
           ) : weeks.length === 0 ? (
             <p className="notice">No regular-season games posted yet.</p>
           ) : weekGames.length === 0 ? (
@@ -773,16 +816,9 @@ export default function Board({ data }) {
               {openGames.length ? (
                 <div className="games">{openGames.map(card)}</div>
               ) : (
-                <p className="notice">Every game shown for week {week} has kicked off.</p>
+                <p className="notice">Every game shown for week {week} has kicked off. They’re below under Started or finished.</p>
               )}
-              {startedGames.length ? (
-                <div className="started">
-                  <button type="button" className="pill started-toggle" aria-expanded={showStarted} onClick={() => setShowStarted((v) => !v)}>
-                    {showStarted ? 'Hide' : 'Show'} {startedGames.length} started or finished {startedGames.length === 1 ? 'game' : 'games'}
-                  </button>
-                  {showStarted ? <div className="games">{startedGames.map(card)}</div> : null}
-                </div>
-              ) : null}
+              <StartedSection items={startedGames} card={card} forceOpen={Boolean(q)} />
             </>
           )}
         </>
